@@ -11,7 +11,7 @@ export function RoleSelector() {
       description: 'Manage staff, services, and system settings',
       icon: Shield,
       color: 'bg-blue-500',
-      path: '/admin'
+      path: '/login/admin'
     },
     {
       id: 'staff',
@@ -19,7 +19,7 @@ export function RoleSelector() {
       description: 'View and manage assigned appointments',
       icon: Users,
       color: 'bg-green-500',
-      path: '/staff'
+      path: '/login/staff'
     },
     {
       id: 'user',

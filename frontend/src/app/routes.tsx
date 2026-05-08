@@ -13,11 +13,16 @@ import { UserDashboard } from "./components/user/UserDashboard";
 import { BookAppointment } from "./components/user/BookAppointment";
 import { MyAppointments } from "./components/user/MyAppointments";
 import { RoleSelector } from "./components/RoleSelector";
+import { LoginPage } from "./components/LoginPage";
 
 export const router = createBrowserRouter([
   {
     path: "/",
     Component: RoleSelector,
+  },
+  {
+    path: "/login/:role",
+    Component: LoginPage,
   },
   {
     path: "/admin",

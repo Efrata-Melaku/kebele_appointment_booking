@@ -1,46 +1,138 @@
 import { Calendar, CheckCircle, Clock, Users, TrendingUp, UserPlus, Settings, FileText } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router';
+import { apiJson } from '../../../lib/api';
+
+type Overview = {
+  totalDepartments: number;
+  totalServices: number;
+  totalStaff: number;
+  totalAppointments: number;
+  pendingAppointments: number;
+  completedAppointments: number;
+  todayAppointments: number;
+};
+
+type DeptStat = {
+  department: string;
+  services: number;
+  appointments: number;
+};
+
+type RecentApt = {
+  id: number;
+  appointmentNumber: string;
+  status: string;
+  resident?: { fullName: string };
+  service?: { name: string; department?: { name: string } };
+  timeSlot?: { date: string; startTime: string };
+};
 
 export function AdminDashboard() {
-  const stats = [
-    { label: 'Total Appointments', value: '1,234', change: '+12%', icon: Calendar, color: 'bg-blue-500' },
-    { label: "Today's Appointments", value: '47', change: '+5%', icon: Clock, color: 'bg-green-500' },
-    { label: 'Completed', value: '892', change: '+8%', icon: CheckCircle, color: 'bg-purple-500' },
-    { label: 'Total Staff', value: '24', change: '+2', icon: Users, color: 'bg-orange-500' },
-  ];
+  const navigate = useNavigate();
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [recent, setRecent] = useState<RecentApt[]>([]);
+  const [deptStats, setDeptStats] = useState<DeptStat[]>([]);
+  const [error, setError] = useState('');
 
-  const chartData = [
-    { name: 'Mon', appointments: 45 },
-    { name: 'Tue', appointments: 52 },
-    { name: 'Wed', appointments: 48 },
-    { name: 'Thu', appointments: 61 },
-    { name: 'Fri', appointments: 55 },
-    { name: 'Sat', appointments: 38 },
-    { name: 'Sun', appointments: 25 },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiJson<{
+          overview: Overview;
+          recentAppointments: RecentApt[];
+          departmentStats: DeptStat[];
+        }>('/api/admin/dashboard');
+        if (cancelled) return;
+        setOverview(data.overview);
+        setRecent(data.recentAppointments ?? []);
+        setDeptStats(data.departmentStats ?? []);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load dashboard');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const serviceData = [
-    { service: 'ID Card', count: 145, percentage: 35 },
-    { service: 'Birth Certificate', count: 98, percentage: 24 },
-    { service: 'Marriage Certificate', count: 76, percentage: 18 },
-    { service: 'Other', count: 95, percentage: 23 },
-  ];
+  const stats = overview
+    ? [
+        {
+          label: 'Total Appointments',
+          value: String(overview.totalAppointments),
+          change: '+',
+          icon: Calendar,
+          color: 'bg-blue-500',
+        },
+        {
+          label: "Today's Appointments",
+          value: String(overview.todayAppointments),
+          change: '+',
+          icon: Clock,
+          color: 'bg-green-500',
+        },
+        {
+          label: 'Completed',
+          value: String(overview.completedAppointments),
+          change: '+',
+          icon: CheckCircle,
+          color: 'bg-purple-500',
+        },
+        {
+          label: 'Total Staff',
+          value: String(overview.totalStaff),
+          change: '+',
+          icon: Users,
+          color: 'bg-orange-500',
+        },
+      ]
+    : [];
 
-  const recentAppointments = [
-    { id: 'APT-001', name: 'Abebe Kebede', service: 'ID Card', time: '09:00 AM', status: 'Completed' },
-    { id: 'APT-002', name: 'Tigist Haile', service: 'Birth Certificate', time: '10:30 AM', status: 'Pending' },
-    { id: 'APT-003', name: 'Mulugeta Assefa', service: 'Marriage Certificate', time: '11:00 AM', status: 'In Progress' },
-    { id: 'APT-004', name: 'Sara Mohammed', service: 'ID Card', time: '02:00 PM', status: 'Pending' },
-  ];
+  const chartData = deptStats.map((d) => ({
+    name: d.department.slice(0, 12),
+    appointments: d.appointments,
+  }));
+
+  const formatTime = (iso?: string) => {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
   const quickActions = [
-    { label: 'Add Staff', icon: UserPlus, color: 'bg-blue-500' },
-    { label: 'Set Limits', icon: Settings, color: 'bg-green-500' },
-    { label: 'Generate Report', icon: FileText, color: 'bg-purple-500' },
+    {
+      label: 'Add Staff',
+      icon: UserPlus,
+      color: 'bg-blue-500',
+      onClick: () => navigate('/admin/staff'),
+    },
+    {
+      label: 'Generate slots',
+      icon: Settings,
+      color: 'bg-green-500',
+      onClick: () => navigate('/admin/limits'),
+    },
+    {
+      label: 'Manage services',
+      icon: FileText,
+      color: 'bg-purple-500',
+      onClick: () => navigate('/admin/services'),
+    },
   ];
 
   return (
     <div className="space-y-6">
+      {error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((stat) => {
@@ -51,9 +143,9 @@ export function AdminDashboard() {
                 <div className={`${stat.color} w-12 h-12 rounded-lg flex items-center justify-center`}>
                   <Icon className="w-6 h-6 text-white" />
                 </div>
-                <span className="text-green-600 text-sm flex items-center gap-1">
+                <span className="text-gray-400 text-sm flex items-center gap-1">
                   <TrendingUp className="w-4 h-4" />
-                  {stat.change}
+                  —
                 </span>
               </div>
               <h3 className="text-gray-600 text-sm mb-1">{stat.label}</h3>
@@ -63,49 +155,56 @@ export function AdminDashboard() {
         })}
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Weekly Appointments Chart */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg mb-4 text-gray-800">Weekly Appointments</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" stroke="#888" />
-              <YAxis stroke="#888" />
-              <Tooltip />
-              <Bar dataKey="appointments" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <h3 className="text-lg mb-4 text-gray-800">Appointments by department</h3>
+          {chartData.length === 0 ? (
+            <p className="text-sm text-gray-500 py-12 text-center">No data yet.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="name" stroke="#888" />
+                <YAxis stroke="#888" />
+                <Tooltip />
+                <Bar dataKey="appointments" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
 
-        {/* Service Distribution */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg mb-4 text-gray-800">Service Distribution</h3>
-          <div className="space-y-4">
-            {serviceData.map((item) => (
-              <div key={item.service}>
-                <div className="flex justify-between mb-2 text-sm">
-                  <span className="text-gray-700">{item.service}</span>
-                  <span className="text-gray-600">{item.count}</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div
-                    className="bg-blue-500 h-2 rounded-full transition-all"
-                    style={{ width: `${item.percentage}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+          <h3 className="text-lg mb-4 text-gray-800">Department breakdown</h3>
+          <div className="space-y-4 max-h-[280px] overflow-y-auto">
+            {deptStats.length === 0 ? (
+              <p className="text-sm text-gray-500">No departments yet.</p>
+            ) : (
+              deptStats.map((item) => {
+                const max = Math.max(...deptStats.map((x) => x.appointments), 1);
+                const pct = Math.round((item.appointments / max) * 100);
+                return (
+                  <div key={item.department}>
+                    <div className="flex justify-between mb-2 text-sm">
+                      <span className="text-gray-700 truncate pr-2">{item.department}</span>
+                      <span className="text-gray-600 shrink-0">{item.appointments}</span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
 
-      {/* Recent Appointments & Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Appointments */}
         <div className="lg:col-span-2 bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg mb-4 text-gray-800">Recent Appointments</h3>
+          <h3 className="text-lg mb-4 text-gray-800">Recent appointments</h3>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -118,38 +217,43 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentAppointments.map((apt) => (
-                  <tr key={apt.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-3 px-4 text-sm text-gray-800">{apt.id}</td>
-                    <td className="py-3 px-4 text-sm text-gray-800">{apt.name}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{apt.service}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{apt.time}</td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        apt.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                        apt.status === 'In Progress' ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {apt.status}
-                      </span>
+                {recent.length === 0 ? (
+                  <tr>
+                    <td className="py-8 px-4 text-sm text-gray-500" colSpan={5}>
+                      No appointments yet.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  recent.map((apt) => (
+                    <tr key={apt.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm text-gray-800">{apt.appointmentNumber}</td>
+                      <td className="py-3 px-4 text-sm text-gray-800">{apt.resident?.fullName ?? '—'}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{apt.service?.name ?? '—'}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{formatTime(apt.timeSlot?.startTime)}</td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-1 rounded-full text-xs bg-gray-100 text-gray-700">
+                          {apt.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Quick Actions */}
         <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg mb-4 text-gray-800">Quick Actions</h3>
+          <h3 className="text-lg mb-4 text-gray-800">Quick actions</h3>
           <div className="space-y-3">
             {quickActions.map((action) => {
               const Icon = action.icon;
               return (
                 <button
                   key={action.label}
-                  className="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                  type="button"
+                  onClick={action.onClick}
+                  className="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors text-left"
                 >
                   <div className={`${action.color} w-10 h-10 rounded-lg flex items-center justify-center`}>
                     <Icon className="w-5 h-5 text-white" />

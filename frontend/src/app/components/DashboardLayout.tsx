@@ -14,7 +14,8 @@ import {
   X,
   ClipboardList
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { clearAuthSession, getAuthUser } from '../../lib/auth';
 
 export function DashboardLayout() {
   const location = useLocation();
@@ -23,12 +24,21 @@ export function DashboardLayout() {
 
   const role = location.pathname.split('/')[1];
 
+  useEffect(() => {
+    if (role !== 'admin' && role !== 'staff') return;
+    const u = getAuthUser();
+    const need = role === 'admin' ? 'ADMIN' : 'STAFF';
+    if (!u || u.role !== need) {
+      navigate(`/login/${role}`, { replace: true });
+    }
+  }, [role, navigate, location.pathname]);
+
   const menuItems = {
     admin: [
       { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
       { path: '/admin/staff', label: 'Manage Staff', icon: Users },
       { path: '/admin/houseowners', label: 'Houseowner Records', icon: Home },
-      { path: '/admin/limits', label: 'Appointment Limits', icon: Calendar },
+      { path: '/admin/limits', label: 'Generate slots', icon: Calendar },
       { path: '/admin/services', label: 'Services', icon: FileText },
       { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
       { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
@@ -94,7 +104,10 @@ export function DashboardLayout() {
           {/* Footer */}
           <div className="p-4 border-t border-gray-200">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => {
+                clearAuthSession();
+                navigate('/');
+              }}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
             >
               <LogOut className="w-5 h-5" />

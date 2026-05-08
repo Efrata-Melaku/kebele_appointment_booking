@@ -1,18 +1,68 @@
 import { useNavigate } from 'react-router';
 import { Calendar, Clock, CheckCircle, Bell, Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { apiFetch } from '../../../lib/api';
+import { getResidentPhone } from '../../../lib/auth';
+
+type Apt = {
+  id: number;
+  appointmentNumber: string;
+  status: string;
+  service?: { name: string };
+  timeSlot?: { date?: string; startTime?: string };
+};
 
 export function UserDashboard() {
   const navigate = useNavigate();
+  const [list, setList] = useState<Apt[]>([]);
 
-  const upcomingAppointments = [
-    { id: 'APT-001', service: 'ID Card', date: '2024-05-05', time: '10:00 AM', status: 'Confirmed' },
-    { id: 'APT-002', service: 'Birth Certificate', date: '2024-05-08', time: '02:00 PM', status: 'Pending' },
-  ];
+  useEffect(() => {
+    const ph = getResidentPhone()?.trim();
+    if (!ph) return;
+    void (async () => {
+      const { res, body } = await apiFetch(
+        `/api/user/appointments?phone=${encodeURIComponent(ph)}`,
+        { skipAuth: true }
+      );
+      if (res.ok && body?.success && Array.isArray(body.data)) {
+        setList(body.data as Apt[]);
+      }
+    })();
+  }, []);
+
+  const upcomingAppointments = list
+    .filter((a) => (a.status || '').toUpperCase() === 'PENDING')
+    .slice(0, 6)
+    .map((apt) => ({
+      id: String(apt.id),
+      title: apt.service?.name ?? 'Service',
+      ref: apt.appointmentNumber,
+      date: apt.timeSlot?.date ? new Date(apt.timeSlot.date).toLocaleDateString() : '—',
+      time: apt.timeSlot?.startTime
+        ? new Date(apt.timeSlot.startTime).toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '—',
+    }));
+
+  const pendingCount = list.filter((a) => (a.status || '').toUpperCase() === 'PENDING').length;
+  const completedCount = list.filter((a) => (a.status || '').toUpperCase() === 'COMPLETED').length;
 
   const notifications = [
-    { id: 1, message: 'Your ID Card appointment is confirmed for May 5, 2024 at 10:00 AM', time: '2 hours ago', read: false },
-    { id: 2, message: 'Please bring required documents for your Birth Certificate appointment', time: '1 day ago', read: false },
-    { id: 3, message: 'Your feedback has been received. Thank you!', time: '3 days ago', read: true },
+    {
+      id: 1,
+      message:
+        'Resident bookings use /api/user/*. Save your phone in My appointments to load summaries here.',
+      time: '',
+      read: false,
+    },
+    {
+      id: 2,
+      message: 'Staff/admins authenticate with JWT via /login/admin or /login/staff.',
+      time: '',
+      read: true,
+    },
   ];
 
   return (
@@ -36,7 +86,7 @@ export function UserDashboard() {
           <div className="bg-blue-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
             <Calendar className="w-6 h-6 text-blue-600" />
           </div>
-          <p className="text-3xl text-gray-800 mb-1">2</p>
+          <p className="text-3xl text-gray-800 mb-1">{pendingCount}</p>
           <p className="text-sm text-gray-600">Upcoming Appointments</p>
         </div>
 
@@ -44,7 +94,7 @@ export function UserDashboard() {
           <div className="bg-green-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
             <CheckCircle className="w-6 h-6 text-green-600" />
           </div>
-          <p className="text-3xl text-gray-800 mb-1">5</p>
+          <p className="text-3xl text-gray-800 mb-1">{completedCount}</p>
           <p className="text-sm text-gray-600">Completed Appointments</p>
         </div>
 
@@ -52,7 +102,7 @@ export function UserDashboard() {
           <div className="bg-orange-100 w-12 h-12 rounded-lg flex items-center justify-center mb-4">
             <Clock className="w-6 h-6 text-orange-600" />
           </div>
-          <p className="text-3xl text-gray-800 mb-1">1</p>
+          <p className="text-3xl text-gray-800 mb-1">{pendingCount}</p>
           <p className="text-sm text-gray-600">Pending Approval</p>
         </div>
       </div>
@@ -88,13 +138,11 @@ export function UserDashboard() {
                 <div key={apt.id} className="border border-gray-100 rounded-lg p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <h4 className="text-gray-800 mb-1">{apt.service}</h4>
-                      <p className="text-sm text-gray-500">Appointment ID: {apt.id}</p>
+                      <h4 className="text-gray-800 mb-1">{apt.title}</h4>
+                      <p className="text-sm text-gray-500">Ref: {apt.ref}</p>
                     </div>
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      apt.status === 'Confirmed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {apt.status}
+                    <span className="px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-700">
+                      Pending
                     </span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-600">

@@ -1,10 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,105 +10,118 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Resident {
-  resident_id Int @id @default(autoincrement())
-  full_name   String
-  phone_number String
-  kebele_id   String?
-  house_number String?
-
-  appointments Appointment[]
-}
-
-model Department {
-  department_id Int @id @default(autoincrement())
-  name String
-
-  services Service[]
-  timeSlots TimeSlot[]
-}
-
-model Service {
-  service_id Int @id @default(autoincrement())
-  name String
-  required_documents String?
-  has_teyaze_requirement Boolean @default(false)
-
-  department_id Int
-  department Department @relation(fields: [department_id], references: [department_id])
-
-  appointments Appointment[]
-}
-
-model TimeSlot {
-  slot_id Int @id @default(autoincrement())
-
-  date DateTime
-
-  start_time String
-  end_time String
-
-  max_capacity Int @default(10)
-  booked_count Int @default(0)
-
-  service_id Int
-  service Service @relation(fields: [service_id], references: [service_id])
-
-  appointments Appointment[]
-}
-
-model Appointment {
-  appointment_id String @id
-
-  status String @default("Pending")
-
-  resident_id Int
-  service_id Int
-  slot_id Int
-
-  document_path String?
-
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
-
-  resident Resident @relation(fields: [resident_id], references: [resident_id])
-
-  service Service @relation(fields: [service_id], references: [service_id])
-
-  slot TimeSlot @relation(fields: [slot_id], references: [slot_id])
-
-  feedback Feedback[]
-}
-
-model Feedback {
-  feedback_id Int @id @default(autoincrement())
-  content String
-  rating Int?
-
-  appointment_id String
-  appointment Appointment @relation(fields: [appointment_id], references: [appointment_id])
-}
-model User {
-  id       Int    @id @default(autoincrement())
-  name     String
-  email    String @unique
-  password String
-  role     Role
-}
-
 enum Role {
   ADMIN
   STAFF
 }
-  model Houseowner {
-  kebeleID String @id
-  firstName String
-  lastName String
-  dateOfBirth DateTime
-  gender String
-  address String
-  phoneNumber String
-  familyInfo String?
-  maxRepresentations Int 
-  eligibilityCheck Boolean @default(false)
+
+enum AppointmentStatus {
+  PENDING
+  COMPLETED
+  RESCHEDULED
+  NOT_SERVED
+  CANCELLED
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  role      Role
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Resident {
+  id          Int          @id @default(autoincrement())
+  fullName    String
+  phone       String       @unique
+  gender      String
+  documentUrl String?
+  kebeleId    String?
+  houseNumber String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  appointments Appointment[]
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  services  Service[]
+}
+
+model Service {
+  id                   Int        @id @default(autoincrement()) @map("service_id")
+  name                 String
+  description          String?
+  durationInMinutes    Int
+  staffCount           Int
+  requiredDocuments    String?    // JSON string for documents list
+  hasTeyazeRequirement Boolean    @default(false)
+  departmentId         Int
+  department           Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  timeSlots            TimeSlot[]
+  appointments         Appointment[]
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  @@map("services")
+}
+
+model TimeSlot {
+  id           Int          @id @default(autoincrement()) @map("slot_id")
+  date         DateTime
+  startTime    DateTime
+  endTime      DateTime
+  maxCapacity  Int
+  bookedCount  Int          @default(0)
+  isAvailable  Boolean      @default(true)
+  serviceId    Int
+  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([serviceId, startTime])
+  @@map("time_slots")
+}
+
+model Appointment {
+  id                Int               @id @default(autoincrement())
+  appointmentNumber String            @unique
+  residentId        Int
+  resident          Resident          @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  serviceId         Int
+  service           Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  timeSlotId        Int
+  timeSlot          TimeSlot          @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
+  status            AppointmentStatus @default(PENDING)
+  documentUrl       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  feedback          Feedback?
+}
+
+model Feedback {
+  id            Int         @id @default(autoincrement())
+  appointmentId Int         @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  rating        Int?
+  comment       String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Houseowner {
+  id        Int      @id @default(autoincrement())
+  name      String
+  address   String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

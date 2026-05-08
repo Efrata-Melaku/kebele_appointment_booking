@@ -1,207 +1,417 @@
-import { useState } from 'react';
-import { Edit, Trash2, MessageSquare, X, Star } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Edit, Trash2, MessageSquare, X, Star, Loader2 } from 'lucide-react';
+import { apiFetch, apiJson } from '../../../lib/api';
+import { getResidentPhone, setResidentPhone } from '../../../lib/auth';
+
+type Apt = {
+  id: number;
+  appointmentNumber: string;
+  status: string;
+  serviceId?: number;
+  service?: { name: string };
+  timeSlot?: { date: string; startTime: string; endTime?: string };
+};
 
 export function MyAppointments() {
+  const [phone, setPhoneInput] = useState(() => getResidentPhone() || '');
+  const [savedPhone, setSavedPhone] = useState(() => getResidentPhone());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [list, setList] = useState<Apt[]>([]);
+  const [tab, setTab] = useState<'ALL' | 'PENDING' | 'COMPLETED' | 'CANCELLED'>('ALL');
+
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [selectedApt, setSelectedApt] = useState<any>(null);
-  const [rating, setRating] = useState(0);
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [selected, setSelected] = useState<Apt | null>(null);
 
-  const appointments = [
-    { id: 'APT-001', service: 'ID Card', date: '2024-05-05', time: '10:00 AM', status: 'Confirmed', canFeedback: false },
-    { id: 'APT-002', service: 'Birth Certificate', date: '2024-05-08', time: '02:00 PM', status: 'Pending', canFeedback: false },
-    { id: 'APT-003', service: 'Marriage Certificate', date: '2024-04-25', time: '11:00 AM', status: 'Completed', canFeedback: true },
-    { id: 'APT-004', service: 'ID Card', date: '2024-04-20', time: '09:30 AM', status: 'Completed', canFeedback: true },
-  ];
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+
+  const [resSlots, setResSlots] = useState<{ id: number; startTime: string; endTime: string }[]>([]);
+  const [resDate, setResDate] = useState('');
+  const [resSlotId, setResSlotId] = useState<number | ''>('');
+  const [resBusy, setResBusy] = useState(false);
+
+  const load = useCallback(async (explicitPhone?: string) => {
+    const p = (explicitPhone ?? savedPhone)?.trim();
+    if (!p) return;
+    setLoading(true);
+    setError('');
+    try {
+      const { res, body } = await apiFetch(
+        `/api/user/appointments?phone=${encodeURIComponent(p)}`,
+        { skipAuth: true }
+      );
+      if (!res.ok || !body?.success || body.data === undefined)
+        throw new Error((body as { error?: string })?.error || 'Failed');
+      setList((body.data as Apt[]) ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load');
+    } finally {
+      setLoading(false);
+    }
+  }, [savedPhone]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = useMemo(() => {
+    const u = tab === 'ALL' ? list : list.filter((a) => (a.status || '').toUpperCase() === tab);
+    return u;
+  }, [list, tab]);
+
+  function persistPhoneAndLoad() {
+    const p = phone.trim();
+    setResidentPhone(p);
+    setSavedPhone(p);
+    setError('');
+    void load(p);
+  }
+
+  async function confirmCancel() {
+    if (!selected || !savedPhone) return;
+    try {
+      const { res, body } = await apiFetch(
+        `/api/user/appointments/${selected.id}?phone=${encodeURIComponent(savedPhone.trim())}`,
+        { method: 'DELETE', skipAuth: true }
+      );
+      if (!res.ok || !body?.success) throw new Error((body as { error?: string })?.error || 'Failed');
+      setShowCancelModal(false);
+      setSelected(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Cancel failed');
+    }
+  }
+
+  async function submitFeedback() {
+    if (!selected || rating < 1) return;
+    try {
+      const { res, body } = await apiFetch('/api/user/feedback', {
+        method: 'POST',
+        skipAuth: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId: selected.id,
+          rating,
+          comment: comment.trim() || undefined,
+        }),
+      });
+      if (!res.ok || !body?.success) throw new Error((body as { error?: string })?.error || 'Failed');
+      setShowFeedbackModal(false);
+      setSelected(null);
+      setRating(0);
+      setComment('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Feedback failed');
+    }
+  }
+
+  async function reloadSlots(serviceId: number, dateISO: string) {
+    setResBusy(true);
+    try {
+      const slots = await apiJson<{ id: number; startTime: string; endTime: string }[]>(
+        `/api/user/timeslots/${serviceId}/${dateISO}`,
+        { skipAuth: true }
+      );
+      setResSlots(slots);
+      setResSlotId('');
+    } catch {
+      setResSlots([]);
+    } finally {
+      setResBusy(false);
+    }
+  }
+
+  async function openReschedule(apt: Apt) {
+    if (typeof apt.serviceId !== 'number') {
+      setError('Cannot reschedule: missing service id');
+      return;
+    }
+    setError('');
+    setSelected(apt);
+    const d = apt.timeSlot?.date
+      ? new Date(apt.timeSlot.date).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+    setResDate(d);
+    setResSlotId('');
+    setShowReschedule(true);
+    await reloadSlots(apt.serviceId, d);
+  }
+
+  async function applyReschedule() {
+    if (!selected || savedPhone?.trim() === '' || resSlotId === '') return;
+    setResBusy(true);
+    try {
+      const { res, body } = await apiFetch(`/api/user/appointments/${selected.id}`, {
+        method: 'PUT',
+        skipAuth: true,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: savedPhone.trim(),
+          timeSlotId: resSlotId,
+        }),
+      });
+      if (!res.ok || !body?.success) throw new Error((body as { error?: string })?.error || 'Failed');
+      setShowReschedule(false);
+      setSelected(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reschedule failed');
+    } finally {
+      setResBusy(false);
+    }
+  }
+
+  function statusLabel(status: string) {
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+        return 'Pending';
+      case 'COMPLETED':
+        return 'Completed';
+      case 'CANCELLED':
+        return 'Cancelled';
+      default:
+        return status;
+    }
+  }
+
+  function formatDt(apt: Apt) {
+    const ds = apt.timeSlot?.startTime ? new Date(apt.timeSlot.startTime) : null;
+    return {
+      d: apt.timeSlot?.date ? new Date(apt.timeSlot.date).toLocaleDateString() : ds?.toLocaleDateString() ?? '—',
+      t: ds
+        ? ds.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+        : '—',
+    };
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
-        <h2 className="text-2xl text-gray-800">My Appointments</h2>
-        <p className="text-gray-600 text-sm">View and manage your appointments</p>
+        <h2 className="text-2xl text-gray-800">My appointments</h2>
+        <p className="text-gray-600 text-sm">Enter the phone you used when booking</p>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-        <div className="flex flex-wrap gap-2">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded-lg">All</button>
-          <button className="px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Upcoming</button>
-          <button className="px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Completed</button>
-          <button className="px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors">Cancelled</button>
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-2">
+        <input
+          type="tel"
+          placeholder="Phone number"
+          value={phone}
+          onChange={(e) => setPhoneInput(e.target.value)}
+          className="flex-1 px-4 py-2 border border-gray-200 rounded-lg"
+        />
+        <button
+          type="button"
+          onClick={persistPhoneAndLoad}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        >
+          Load appointments
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-gray-500">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading…
         </div>
-      </div>
+      ) : null}
+      {error ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
+      ) : null}
 
-      {/* Appointments Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {appointments.map((apt) => (
-          <div key={apt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg text-gray-800 mb-1">{apt.service}</h3>
-                  <p className="text-sm text-gray-500">ID: {apt.id}</p>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs ${
-                  apt.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                  apt.status === 'Confirmed' ? 'bg-blue-100 text-blue-700' :
-                  apt.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
-                  {apt.status}
-                </span>
-              </div>
-
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <span>📅</span>
-                  <span>{apt.date}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <span>🕐</span>
-                  <span>{apt.time}</span>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-4 border-t border-gray-100">
-                {apt.status !== 'Completed' && apt.status !== 'Cancelled' && (
-                  <>
-                    <button className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm">
-                      <Edit className="w-4 h-4" />
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedApt(apt);
-                        setShowCancelModal(true);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors text-sm"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Cancel
-                    </button>
-                  </>
-                )}
-                {apt.canFeedback && (
-                  <button
-                    onClick={() => {
-                      setSelectedApt(apt);
-                      setShowFeedbackModal(true);
-                    }}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors text-sm"
-                  >
-                    <MessageSquare className="w-4 h-4" />
-                    Feedback
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+      <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex flex-wrap gap-2">
+        {(['ALL', 'PENDING', 'COMPLETED', 'CANCELLED'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 rounded-lg ${tab === t ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700'}`}
+          >
+            {t === 'ALL' ? 'All' : t.charAt(0) + t.slice(1).toLowerCase()}
+          </button>
         ))}
       </div>
 
-      {/* Cancel Confirmation Modal */}
-      {showCancelModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl text-gray-800">Cancel Appointment</h3>
-              <button onClick={() => setShowCancelModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to cancel this appointment? This action cannot be undone.
-            </p>
-
-            <div className="bg-gray-50 rounded-lg p-4 mb-6">
-              <p className="text-sm text-gray-700"><strong>Service:</strong> {selectedApt?.service}</p>
-              <p className="text-sm text-gray-700"><strong>Date:</strong> {selectedApt?.date}</p>
-              <p className="text-sm text-gray-700"><strong>Time:</strong> {selectedApt?.time}</p>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowCancelModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Keep Appointment
-              </button>
-              <button
-                onClick={() => setShowCancelModal(false)}
-                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
-              >
-                Yes, Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Feedback Modal */}
-      {showFeedbackModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-xl text-gray-800">Leave Feedback</h3>
-              <button onClick={() => {
-                setShowFeedbackModal(false);
-                setRating(0);
-              }} className="text-gray-400 hover:text-gray-600">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm text-gray-700 mb-3">How was your experience?</label>
-              <div className="flex gap-2 justify-center">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() => setRating(star)}
-                    className="transition-transform hover:scale-110"
+      {!savedPhone?.trim() ? (
+        <p className="text-sm text-gray-500">Enter your phone above to fetch appointments.</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {filtered.map((apt) => {
+            const { d, t } = formatDt(apt);
+            const st = apt.status?.toUpperCase() || '';
+            const canModify = st === 'PENDING';
+            const canFeedback = st === 'COMPLETED';
+            return (
+              <div key={apt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <div className="flex justify-between mb-3">
+                  <div>
+                    <h3 className="text-lg text-gray-800">{apt.service?.name ?? 'Service'}</h3>
+                    <p className="text-sm text-gray-500">{apt.appointmentNumber}</p>
+                  </div>
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs ${
+                      st === 'COMPLETED'
+                        ? 'bg-green-100 text-green-700'
+                        : st === 'CANCELLED'
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-yellow-100 text-yellow-700'
+                    }`}
                   >
-                    <Star
-                      className={`w-8 h-8 ${star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
-                    />
-                  </button>
-                ))}
+                    {statusLabel(apt.status)}
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600 mb-4 space-y-1">
+                  <div>📅 {d}</div>
+                  <div>🕐 {t}</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canModify ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openReschedule(apt)}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm"
+                      >
+                        <Edit className="w-4 h-4" /> Reschedule
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(apt);
+                          setShowCancelModal(true);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm"
+                      >
+                        <Trash2 className="w-4 h-4" /> Cancel
+                      </button>
+                    </>
+                  ) : null}
+                  {canFeedback ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelected(apt);
+                        setShowFeedbackModal(true);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg text-sm"
+                    >
+                      <MessageSquare className="w-4 h-4" /> Feedback
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            );
+          })}
+        </div>
+      )}
 
-            <div className="mb-6">
-              <label className="block text-sm text-gray-700 mb-2">Comments</label>
-              <textarea
-                className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows={4}
-                placeholder="Share your experience with us..."
-              />
-            </div>
+      {filtered.length === 0 && savedPhone?.trim() && !loading ? (
+        <p className="text-sm text-gray-500">No appointments for this filter.</p>
+      ) : null}
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowFeedbackModal(false);
-                  setRating(0);
-                }}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
+      {showCancelModal && selected ? (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <div className="flex justify-between mb-4">
+              <h3 className="text-xl text-gray-800">Cancel appointment</h3>
+              <button type="button" onClick={() => setShowCancelModal(false)}>
+                <X className="w-6 h-6 text-gray-400" />
               </button>
-              <button
-                onClick={() => {
-                  setShowFeedbackModal(false);
-                  setRating(0);
-                }}
-                className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-              >
-                Submit Feedback
+            </div>
+            <p className="text-gray-600 mb-4">Confirm cancellation for {selected.appointmentNumber}?</p>
+            <div className="flex gap-2">
+              <button type="button" className="flex-1 py-2 border rounded-lg" onClick={() => setShowCancelModal(false)}>
+                Keep
+              </button>
+              <button type="button" className="flex-1 py-2 bg-red-500 text-white rounded-lg" onClick={confirmCancel}>
+                Cancel booking
               </button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
+
+      {showFeedbackModal && selected ? (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <div className="flex justify-between mb-4">
+              <h3 className="text-xl text-gray-800">Feedback</h3>
+              <button type="button" onClick={() => setShowFeedbackModal(false)}>
+                <X className="w-6 h-6 text-gray-400" />
+              </button>
+            </div>
+            <div className="flex gap-2 justify-center mb-4">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button key={star} type="button" onClick={() => setRating(star)}>
+                  <Star
+                    className={`w-8 h-8 ${star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
+                  />
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 mb-4"
+              rows={3}
+            />
+            <button type="button" className="w-full py-2 bg-purple-600 text-white rounded-lg" onClick={submitFeedback}>
+              Submit
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {showReschedule && selected ? (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-3">
+            <div className="flex justify-between">
+              <h3 className="text-xl text-gray-800">Reschedule</h3>
+              <button type="button" onClick={() => setShowReschedule(false)}>
+                <X className="w-6 h-6 text-gray-400" />
+              </button>
+            </div>
+            <label className="block text-sm">Date</label>
+            <input
+              type="date"
+              value={resDate}
+              onChange={(e) => {
+                const v = e.target.value;
+                setResDate(v);
+                if (selected?.serviceId != null) {
+                  void reloadSlots(selected.serviceId, v);
+                }
+              }}
+              className="w-full border rounded-lg px-3 py-2"
+            />
+            <label className="block text-sm">New slot</label>
+            {resBusy ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <select
+                value={resSlotId === '' ? '' : String(resSlotId)}
+                onChange={(e) => setResSlotId(e.target.value ? Number(e.target.value) : '')}
+                className="w-full border rounded-lg px-3 py-2"
+              >
+                <option value="">Select</option>
+                {resSlots.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {new Date(s.startTime).toLocaleTimeString(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button type="button" className="w-full py-2 bg-blue-500 text-white rounded-lg" onClick={applyReschedule}>
+              Confirm reschedule
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
