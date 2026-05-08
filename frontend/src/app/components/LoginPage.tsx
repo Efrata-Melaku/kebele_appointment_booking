@@ -47,6 +47,7 @@ export function LoginPage() {
       }
       setAuthSession(data.token, data.user);
       navigate(expectedRole === 'ADMIN' ? '/admin' : '/staff', { replace: true });
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -61,7 +62,6 @@ export function LoginPage() {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8">

@@ -1,6 +1,7 @@
 import { getToken } from './auth';
 
-const baseUrl = () => import.meta.env.VITE_API_URL || '';
+// const baseUrl = () => import.meta.env.VITE_API_URL || '';
+const baseUrl = () => 'http://localhost:5000';
 
 export type ApiEnvelope<T = unknown> = {
   success: boolean;
