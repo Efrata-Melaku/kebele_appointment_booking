@@ -4,7 +4,10 @@ const { successResponse, errorResponse } = require('../../utils/response');
 
 const router = express.Router();
 
-// GET /api/user/timeslots/:serviceId/:date
+/**
+ * Legacy path — returns dynamically computed slots (same shape as /appointments/available-slots).
+ * GET /api/user/timeslots/:serviceId/:date
+ */
 router.get('/:serviceId/:date', async (req, res) => {
   try {
     const { serviceId, date } = req.params;

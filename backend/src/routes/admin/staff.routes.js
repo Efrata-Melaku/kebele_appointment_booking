@@ -1,7 +1,7 @@
 const express = require('express');
 const staffController = require('../../controllers/admin/staff.controller');
 const validate = require('../../middleware/validate.middleware');
-const { registerStaffSchema } = require('../../utils/validators');
+const { registerStaffSchema, updateStaffSchema } = require('../../utils/validators');
 
 const router = express.Router();
 
@@ -15,7 +15,7 @@ router.get('/', staffController.getStaff);
 router.get('/:id', staffController.getStaffById);
 
 // PUT /api/admin/staff/:id
-router.put('/:id', staffController.updateStaff);
+router.put('/:id', validate(updateStaffSchema), staffController.updateStaff);
 
 // DELETE /api/admin/staff/:id
 router.delete('/:id', staffController.deleteStaff);

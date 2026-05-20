@@ -5,6 +5,8 @@ const { createDepartmentSchema } = require('../../utils/validators');
 
 const router = express.Router();
 
+router.get('/duplicate-check', departmentController.duplicateCheck);
+
 // POST /api/admin/departments
 router.post('/', validate(createDepartmentSchema), departmentController.createDepartment);
 

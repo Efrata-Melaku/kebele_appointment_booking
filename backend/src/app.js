@@ -12,12 +12,14 @@ const adminDepartmentRoutes = require('./routes/admin/department.routes');
 const adminServiceRoutes = require('./routes/admin/service.routes');
 const adminTimeSlotRoutes = require('./routes/admin/timeslot.routes');
 const adminStaffRoutes = require('./routes/admin/staff.routes');
+const adminScheduleRoutes = require('./routes/admin/schedule.routes');
 const adminDashboardRoutes = require('./routes/admin/dashboard.routes');
 const adminFeedbackRoutes = require('./routes/admin/feedback.routes');
+const adminFormFieldRoutes = require('./routes/admin/formField.routes');
 const staffAppointmentRoutes = require('./routes/staff/appointmentStatus.routes');
 const userAppointmentRoutes = require('./routes/user/appointment.routes');
 const userFeedbackRoutes = require('./routes/user/feedback.routes');
-const userDepartmentRoutes = require('./routes/user/department.routes');
+const userBookingRoutes = require('./routes/user/booking.routes');
 const userServiceRoutes = require('./routes/user/service.routes');
 const userTimeSlotRoutes = require('./routes/user/timeslot.routes');
 
@@ -56,12 +58,14 @@ app.use('/api/admin/departments', protect, authorize(USER_ROLES.ADMIN), adminDep
 app.use('/api/admin/services', protect, authorize(USER_ROLES.ADMIN), adminServiceRoutes);
 app.use('/api/admin/timeslots', protect, authorize(USER_ROLES.ADMIN), adminTimeSlotRoutes);
 app.use('/api/admin/staff', protect, authorize(USER_ROLES.ADMIN), adminStaffRoutes);
+app.use('/api/admin/schedule', protect, authorize(USER_ROLES.ADMIN), adminScheduleRoutes);
 app.use('/api/admin/dashboard', protect, authorize(USER_ROLES.ADMIN), adminDashboardRoutes);
 app.use('/api/admin/feedback', protect, authorize(USER_ROLES.ADMIN), adminFeedbackRoutes);
+app.use('/api/admin/form-fields', protect, authorize(USER_ROLES.ADMIN), adminFormFieldRoutes);
 
 app.use('/api/staff', protect, authorize(USER_ROLES.STAFF), staffAppointmentRoutes);
 
-app.use('/api/user/departments', userDepartmentRoutes);
+app.use('/api/user/booking', userBookingRoutes);
 app.use('/api/user/services', userServiceRoutes);
 app.use('/api/user/timeslots', userTimeSlotRoutes);
 app.use('/api/user/appointments', userAppointmentRoutes);

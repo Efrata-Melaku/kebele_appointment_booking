@@ -1,10 +1,15 @@
 const prisma = require('../../prisma/client');
 const { successResponse, errorResponse } = require('../../utils/response');
+const { APPOINTMENT_STATUS } = require('../../config/constants');
 
 class DashboardController {
   async getDashboardStats(req, res) {
     try {
-      // Get total counts
+      const startToday = new Date();
+      startToday.setHours(0, 0, 0, 0);
+      const endToday = new Date();
+      endToday.setHours(23, 59, 59, 999);
+
       const [
         totalDepartments,
         totalServices,
@@ -18,25 +23,24 @@ class DashboardController {
         prisma.service.count(),
         prisma.user.count({ where: { role: 'STAFF' } }),
         prisma.appointment.count(),
-        prisma.appointment.count({ where: { status: 'PENDING' } }),
-        prisma.appointment.count({ where: { status: 'COMPLETED' } }),
+        prisma.appointment.count({ where: { status: APPOINTMENT_STATUS.PENDING } }),
+        prisma.appointment.count({ where: { status: APPOINTMENT_STATUS.COMPLETED } }),
         prisma.appointment.count({
           where: {
-            createdAt: {
-              gte: new Date(new Date().setHours(0, 0, 0, 0)),
-              lt: new Date(new Date().setHours(23, 59, 59, 999)),
-            },
+            status: { not: APPOINTMENT_STATUS.CANCELLED },
+            slotDate: { gte: startToday, lte: endToday },
           },
         }),
       ]);
 
-      // Get recent appointments
-      const recentAppointments = await prisma.appointment.findMany({
+      const recentRows = await prisma.appointment.findMany({
         take: 10,
         orderBy: { createdAt: 'desc' },
         include: {
-          resident: {
-            select: { fullName: true, phone: true },
+          group: {
+            include: {
+              resident: { select: { fullName: true, phone: true } },
+            },
           },
           service: {
             select: {
@@ -46,13 +50,25 @@ class DashboardController {
               },
             },
           },
-          timeSlot: {
-            select: { date: true, startTime: true, endTime: true },
-          },
+          slotDate: true,
+          slotStartTime: true,
+          slotEndTime: true,
         },
       });
 
-      // Get appointments by department
+      const recentAppointments = recentRows.map((apt) => ({
+        id: apt.id,
+        appointmentNumber: apt.group.appointmentNumber,
+        status: apt.status,
+        resident: apt.group.resident,
+        service: apt.service,
+        timeSlot: {
+          date: apt.slotDate,
+          startTime: apt.slotStartTime,
+          endTime: apt.slotEndTime,
+        },
+      }));
+
       const appointmentsByDepartment = await prisma.department.findMany({
         include: {
           services: {
@@ -65,10 +81,13 @@ class DashboardController {
         },
       });
 
-      const departmentStats = appointmentsByDepartment.map(dept => ({
+      const departmentStats = appointmentsByDepartment.map((dept) => ({
         department: dept.name,
         services: dept.services.length,
-        appointments: dept.services.reduce((sum, service) => sum + service.appointments.length, 0),
+        appointments: dept.services.reduce(
+          (sum, service) => sum + service.appointments.length,
+          0
+        ),
       }));
 
       const stats = {

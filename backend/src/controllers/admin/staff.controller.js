@@ -1,13 +1,14 @@
+const bcrypt = require('bcrypt');
 const prisma = require('../../prisma/client');
 const { successResponse, errorResponse } = require('../../utils/response');
 const { USER_ROLES } = require('../../config/constants');
+const { recalculateStaffCountForService } = require('../../services/serviceStaffCount.service');
 
 class StaffController {
   async registerStaff(req, res) {
     try {
-      const { name, email, password, phone } = req.body;
+      const { name, email, password, phone, departmentId, serviceIds } = req.body;
 
-      // Check if user already exists
       const existingUser = await prisma.user.findUnique({
         where: { email },
       });
@@ -16,12 +17,25 @@ class StaffController {
         return errorResponse(res, 'User already exists with this email', 400);
       }
 
-      // Hash password (handled in auth controller, but keeping here for completeness)
-      const bcrypt = require('bcrypt');
+      const department = await prisma.department.findUnique({
+        where: { id: departmentId },
+      });
+      if (!department) {
+        return errorResponse(res, 'Department not found', 404);
+      }
+
+      const uniqueServiceIds = [...new Set(serviceIds)];
+
+      const services = await prisma.service.findMany({
+        where: { id: { in: uniqueServiceIds } },
+      });
+      if (services.length !== uniqueServiceIds.length) {
+        return errorResponse(res, 'One or more services were not found', 400);
+      }
+
       const saltRounds = 10;
       const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-      // Create staff user
       const staff = await prisma.user.create({
         data: {
           name,
@@ -29,6 +43,10 @@ class StaffController {
           password: hashedPassword,
           role: USER_ROLES.STAFF,
           phone,
+          departmentId,
+          staffServiceAssignments: {
+            create: uniqueServiceIds.map((serviceId) => ({ serviceId })),
+          },
         },
         select: {
           id: true,
@@ -36,9 +54,20 @@ class StaffController {
           email: true,
           role: true,
           phone: true,
+          departmentId: true,
+          isActive: true,
           createdAt: true,
+          staffServiceAssignments: {
+            include: {
+              service: { select: { id: true, name: true } },
+            },
+          },
         },
       });
+
+      for (const sid of uniqueServiceIds) {
+        await recalculateStaffCountForService(sid);
+      }
 
       successResponse(res, 'Staff registered successfully', staff, 201);
     } catch (error) {
@@ -55,7 +84,15 @@ class StaffController {
           name: true,
           email: true,
           phone: true,
+          departmentId: true,
+          isActive: true,
           createdAt: true,
+          department: { select: { id: true, name: true } },
+          staffServiceAssignments: {
+            include: {
+              service: { select: { id: true, name: true } },
+            },
+          },
         },
         orderBy: { name: 'asc' },
       });
@@ -72,7 +109,7 @@ class StaffController {
 
       const staff = await prisma.user.findFirst({
         where: {
-          id: parseInt(id),
+          id: parseInt(id, 10),
           role: USER_ROLES.STAFF,
         },
         select: {
@@ -80,7 +117,15 @@ class StaffController {
           name: true,
           email: true,
           phone: true,
+          departmentId: true,
+          isActive: true,
           createdAt: true,
+          department: { select: { id: true, name: true } },
+          staffServiceAssignments: {
+            include: {
+              service: { select: { id: true, name: true, departmentId: true } },
+            },
+          },
         },
       });
 
@@ -97,33 +142,104 @@ class StaffController {
   async updateStaff(req, res) {
     try {
       const { id } = req.params;
-      const { name, email, phone } = req.body;
+      const { name, email, phone, password, departmentId, serviceIds, isActive } = req.body;
 
-      const staff = await prisma.user.updateMany({
-        where: {
-          id: parseInt(id),
-          role: USER_ROLES.STAFF,
-        },
-        data: {
-          name,
-          email,
-          phone,
-        },
+      const existing = await prisma.user.findFirst({
+        where: { id: parseInt(id, 10), role: USER_ROLES.STAFF },
       });
 
-      if (staff.count === 0) {
+      if (!existing) {
         return errorResponse(res, 'Staff member not found', 404);
       }
 
-      // Get updated staff
+      if (email && email !== existing.email) {
+        const clash = await prisma.user.findUnique({ where: { email } });
+        if (clash) {
+          return errorResponse(res, 'Email already in use', 400);
+        }
+      }
+
+      if (departmentId !== undefined && departmentId !== null) {
+        const department = await prisma.department.findUnique({ where: { id: departmentId } });
+        if (!department) {
+          return errorResponse(res, 'Department not found', 404);
+        }
+      }
+
+      if (Array.isArray(serviceIds)) {
+        const uniqueServiceIds = [...new Set(serviceIds)];
+        const services = await prisma.service.findMany({
+          where: { id: { in: uniqueServiceIds } },
+        });
+        if (services.length !== uniqueServiceIds.length) {
+          return errorResponse(res, 'One or more services were not found', 400);
+        }
+      }
+
+      const data = {};
+      if (name !== undefined) data.name = name;
+      if (email !== undefined) data.email = email;
+      if (phone !== undefined) data.phone = phone;
+      if (departmentId !== undefined) data.departmentId = departmentId;
+      if (isActive !== undefined) data.isActive = !!isActive;
+
+      if (password && String(password).length > 0) {
+        data.password = await bcrypt.hash(password, 10);
+      }
+
+      if (Array.isArray(serviceIds)) {
+        const uniqueServiceIds = [...new Set(serviceIds)];
+        const oldLinks = await prisma.staffServiceAssignment.findMany({
+          where: { staffUserId: existing.id },
+          select: { serviceId: true },
+        });
+        const oldSids = oldLinks.map((l) => l.serviceId);
+
+        await prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: existing.id },
+            data,
+          });
+
+          await tx.staffServiceAssignment.deleteMany({ where: { staffUserId: existing.id } });
+          if (uniqueServiceIds.length > 0) {
+            await tx.staffServiceAssignment.createMany({
+              data: uniqueServiceIds.map((serviceId) => ({
+                staffUserId: existing.id,
+                serviceId,
+              })),
+            });
+          }
+        });
+
+        const toRecalc = new Set(oldSids);
+        uniqueServiceIds.forEach((sid) => toRecalc.add(sid));
+        for (const sid of toRecalc) {
+          await recalculateStaffCountForService(sid);
+        }
+      } else {
+        await prisma.user.update({
+          where: { id: existing.id },
+          data,
+        });
+      }
+
       const updatedStaff = await prisma.user.findUnique({
-        where: { id: parseInt(id) },
+        where: { id: existing.id },
         select: {
           id: true,
           name: true,
           email: true,
           phone: true,
+          departmentId: true,
+          isActive: true,
           createdAt: true,
+          department: { select: { id: true, name: true } },
+          staffServiceAssignments: {
+            include: {
+              service: { select: { id: true, name: true } },
+            },
+          },
         },
       });
 
@@ -136,16 +252,27 @@ class StaffController {
   async deleteStaff(req, res) {
     try {
       const { id } = req.params;
+      const staffId = parseInt(id, 10);
 
-      const staff = await prisma.user.deleteMany({
+      const links = await prisma.staffServiceAssignment.findMany({
+        where: { staffUserId: staffId },
+        select: { serviceId: true },
+      });
+
+      const deleted = await prisma.user.deleteMany({
         where: {
-          id: parseInt(id),
+          id: staffId,
           role: USER_ROLES.STAFF,
         },
       });
 
-      if (staff.count === 0) {
+      if (deleted.count === 0) {
         return errorResponse(res, 'Staff member not found', 404);
+      }
+
+      const sids = [...new Set(links.map((l) => l.serviceId))];
+      for (const sid of sids) {
+        await recalculateStaffCountForService(sid);
       }
 
       successResponse(res, 'Staff member deleted successfully');

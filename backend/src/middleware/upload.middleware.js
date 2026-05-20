@@ -9,6 +9,8 @@ const uploadMultiple = (fieldName, maxCount = 5) => {
   return upload.array(fieldName, maxCount);
 };
 
+const uploadDynamicFiles = () => upload.uploadDynamic;
+
 const handleUploadError = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -31,7 +33,7 @@ const handleUploadError = (err, req, res, next) => {
     }
   }
 
-  if (err.message.includes('Invalid file type')) {
+  if (err.message && err.message.includes('Invalid file type')) {
     return res.status(400).json({
       success: false,
       error: err.message,
@@ -44,5 +46,6 @@ const handleUploadError = (err, req, res, next) => {
 module.exports = {
   uploadSingle,
   uploadMultiple,
+  uploadDynamicFiles,
   handleUploadError,
 };

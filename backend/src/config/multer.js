@@ -33,4 +33,15 @@ const upload = multer({
   fileFilter: fileFilter,
 });
 
+const uploadDynamic = multer({
+  storage,
+  limits: {
+    fileSize: env.MAX_FILE_SIZE,
+    files: 30,
+  },
+  fileFilter,
+}).any();
+
+upload.uploadDynamic = uploadDynamic;
+
 module.exports = upload;

@@ -1,445 +1,201 @@
-// const { Prisma } = require('@prisma/client');
-// const prisma = require('../prisma/client');
-// const generateAppointmentNumber = require('../utils/generateAppointmentNumber');
-// const { APPOINTMENT_STATUS } = require('../config/constants');
-
-// const TRANSACTION_OPTIONS = {
-//   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-//   maxWait: 5000,
-//   timeout: 10000,
-// };
-
-// class AppointmentService {
-//   /**
-//    * Resident books a slot — atomic capacity check + booked_count + is_available sync.
-//    */
-//   async createAppointment(appointmentData, documentUrl = null) {
-//     const { fullName, phone, gender, serviceId, timeSlotId } = appointmentData;
-// const serviceIdNum = Number(serviceId);
-// const timeSlotIdNum = Number(timeSlotId);
-//     const maxAttempts = 8;
-//     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-//       const appointmentNumber = generateAppointmentNumber();
-//       try {
-//         return await prisma.$transaction(async (tx) => {
-//           const timeSlot = await tx.timeSlot.findUnique({
-//             where: { id: timeSlotIdNum },
-//             include: { service: true },
-//           });
-
-//           if (!timeSlot) {
-//             throw new Error('Time slot not found');
-//           }
-
-//           if (timeSlot.serviceId !== Number(serviceIdNum)) {
-//             throw new Error('Selected slot does not belong to the selected service');
-//           }
-
-//           if (!timeSlot.isAvailable || timeSlot.bookedCount >= timeSlot.maxCapacity) {
-//             throw new Error('Time slot is fully booked');
-//           }
-
-//           let resident = await tx.resident.findUnique({ where: { phone } });
-
-//           if (!resident) {
-//             resident = await tx.resident.create({
-//               data: {
-//                 fullName,
-//                 phone,
-//                 gender,
-//                 documentUrl,
-//               },
-//             });
-//           } else {
-//             resident = await tx.resident.update({
-//               where: { id: resident.id },
-//               data: {
-//                 fullName,
-//                 gender,
-//                 ...(documentUrl !== null && documentUrl !== undefined
-//                   ? { documentUrl }
-//                   : {}),
-//               },
-//             });
-//           }
-
-//           const newBooked = timeSlot.bookedCount + 1;
-//         const appointment = await tx.appointment.create({
-//           data: {
-//             appointmentNumber,
-//             residentId: resident.id,
-//             serviceId: serviceIdNum,
-//             timeSlotId: timeSlotIdNum,
-//             ...(documentUrl != null && documentUrl !== ''
-//               ? { documentUrl }
-//               : {}),
-//           },
-//             include: {
-//               resident: true,
-//               service: {
-//                 include: {
-//                   department: true,
-//                 },
-//               },
-//               timeSlot: true,
-//             },
-//           });
-
-//           await tx.timeSlot.update({
-//             where: { id: timeSlotId },
-//             data: {
-//               bookedCount: newBooked,
-//               isAvailable: newBooked < timeSlot.maxCapacity,
-//             },
-//           });
-
-//           return appointment;
-//         }, TRANSACTION_OPTIONS);
-//       } catch (err) {
-//         if (err.code === 'P2002') {
-//           const targets = Array.isArray(err.meta?.target) ? err.meta.target : [];
-//           const isAppointmentNumberDup = targets.includes('appointmentNumber');
-//           if (isAppointmentNumberDup) {
-//             continue;
-//           }
-//         }
-//         throw err;
-//       }
-//     }
-
-//     throw new Error('Unable to generate a unique appointment number, please try again');
-//   }
-
-//   /**
-//    * Resident reschedules — release old slot, consume new slot (same service only).
-//    */
-//   async rescheduleAppointment(appointmentId, { phone, timeSlotId }) {
-//     return prisma.$transaction(async (tx) => {
-//       const appointment = await tx.appointment.findUnique({
-//         where: { id: appointmentId },
-//         include: { resident: true, timeSlot: true },
-//       });
-
-//       if (!appointment) {
-//         throw new Error('Appointment not found');
-//       }
-
-//       if (appointment.resident.phone !== phone) {
-//         throw new Error('Verification failed for this appointment');
-//       }
-
-//       if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
-//         throw new Error('Cannot reschedule a cancelled appointment');
-//       }
-
-//       if (appointment.status === APPOINTMENT_STATUS.COMPLETED) {
-//         throw new Error('Cannot reschedule a completed appointment');
-//       }
-
-//       const newSnap = await tx.timeSlot.findUnique({
-//         where: { id: timeSlotId },
-//         include: { service: true },
-//       });
-
-//       if (!newSnap) {
-//         throw new Error('Time slot not found');
-//       }
-
-//       if (newSnap.serviceId !== appointment.serviceId) {
-//         throw new Error('Invalid slot for this service');
-//       }
-
-//       if (appointment.timeSlotId === timeSlotId) {
-//         return tx.appointment.findUnique({
-//           where: { id: appointmentId },
-//           include: {
-//             resident: true,
-//             service: {
-//               include: {
-//                 department: true,
-//               },
-//             },
-//             timeSlot: true,
-//           },
-//         });
-//       }
-
-//       if (!newSnap.isAvailable || newSnap.bookedCount >= newSnap.maxCapacity) {
-//         throw new Error('Time slot is fully booked');
-//       }
-
-//       const oldSnap = await tx.timeSlot.findUnique({
-//         where: { id: appointment.timeSlotId },
-//       });
-
-//       if (!oldSnap) {
-//         throw new Error('Original time slot not found');
-//       }
-
-//       const oldBookedAfter = Math.max(0, oldSnap.bookedCount - 1);
-
-//       await tx.timeSlot.update({
-//         where: { id: oldSnap.id },
-//         data: {
-//           bookedCount: oldBookedAfter,
-//           isAvailable: oldBookedAfter < oldSnap.maxCapacity,
-//         },
-//       });
-
-//       const newBookedAfter = newSnap.bookedCount + 1;
-//       await tx.timeSlot.update({
-//         where: { id: newSnap.id },
-//         data: {
-//           bookedCount: newBookedAfter,
-//           isAvailable: newBookedAfter < newSnap.maxCapacity,
-//         },
-//       });
-
-//       await tx.appointment.update({
-//         where: { id: appointmentId },
-//         data: {
-//           timeSlotId,
-//           status: APPOINTMENT_STATUS.PENDING,
-//         },
-//       });
-
-//       return tx.appointment.findUnique({
-//         where: { id: appointmentId },
-//         include: {
-//           resident: true,
-//           service: {
-//             include: {
-//               department: true,
-//             },
-//           },
-//           timeSlot: true,
-//         },
-//       });
-//     }, TRANSACTION_OPTIONS);
-//   }
-
-//   async cancelAppointmentById(appointmentId, phone) {
-//     return prisma.$transaction(async (tx) => {
-//       const appointment = await tx.appointment.findUnique({
-//         where: { id: appointmentId },
-//         include: { resident: true, timeSlot: true },
-//       });
-
-//       if (!appointment) {
-//         throw new Error('Appointment not found');
-//       }
-
-//       if (appointment.resident.phone !== phone) {
-//         throw new Error('Verification failed for this appointment');
-//       }
-
-//       if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
-//         throw new Error('Appointment is already cancelled');
-//       }
-
-//       if (appointment.status !== APPOINTMENT_STATUS.PENDING) {
-//         throw new Error('Only pending appointments can be cancelled');
-//       }
-
-//       const slotSnap = await tx.timeSlot.findUnique({
-//         where: { id: appointment.timeSlotId },
-//       });
-
-//       if (!slotSnap) {
-//         throw new Error('Time slot not found');
-//       }
-
-//       const newBooked = Math.max(0, slotSnap.bookedCount - 1);
-
-//       await tx.timeSlot.update({
-//         where: { id: slotSnap.id },
-//         data: {
-//           bookedCount: newBooked,
-//           isAvailable: newBooked < slotSnap.maxCapacity,
-//         },
-//       });
-
-//       await tx.appointment.update({
-//         where: { id: appointmentId },
-//         data: { status: APPOINTMENT_STATUS.CANCELLED },
-//       });
-
-//       return { id: appointmentId, status: APPOINTMENT_STATUS.CANCELLED };
-//     }, TRANSACTION_OPTIONS);
-//   }
-
-//   /**
-//    * Staff updates lifecycle status — capacity is managed at booking/cancel/reschedule time only.
-//    */
-//   async updateAppointmentStatus(appointmentId, status) {
-//     const appointment = await prisma.appointment.findUnique({
-//       where: { id: appointmentId },
-//     });
-
-//     if (!appointment) {
-//       throw new Error('Appointment not found');
-//     }
-
-//     return prisma.appointment.update({
-//       where: { id: appointmentId },
-//       data: { status },
-//       include: {
-//         resident: true,
-//         service: {
-//           include: {
-//             department: true,
-//           },
-//         },
-//         timeSlot: true,
-//       },
-//     });
-//   }
-
-//   async getUserAppointments(residentId) {
-//     const appointments = await prisma.appointment.findMany({
-//       where: { residentId },
-//       include: {
-//         service: {
-//           include: {
-//             department: true,
-//           },
-//         },
-//         timeSlot: true,
-//       },
-//       orderBy: {
-//         createdAt: 'desc',
-//       },
-//     });
-
-//     return appointments;
-//   }
-
-//   async getStaffAppointments() {
-//     const appointments = await prisma.appointment.findMany({
-//       include: {
-//         resident: true,
-//         service: {
-//           include: {
-//             department: true,
-//           },
-//         },
-//         timeSlot: true,
-//       },
-//       orderBy: {
-//         createdAt: 'desc',
-//       },
-//     });
-
-//     return appointments;
-//   }
-// }
-
-// module.exports = new AppointmentService();
-
-
-
 const { Prisma } = require('@prisma/client');
 const prisma = require('../prisma/client');
 const generateAppointmentNumber = require('../utils/generateAppointmentNumber');
+const { isAppointmentNumberRef } = require('../utils/appointmentRef');
 const { APPOINTMENT_STATUS } = require('../config/constants');
+const { attachTimeSlot, attachTimeSlotMany } = require('../utils/appointmentSlot');
+const slotAvailability = require('./slotAvailability.service');
+const formSubmissionService = require('./formSubmission.service');
+const dynamicFormService = require('./dynamicForm.service');
 
-const TRANSACTION_OPTIONS = {
+const BOOKING_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-  maxWait: 5000,
-  timeout: 10000,
+  maxWait: 8000,
+  timeout: 15000,
 };
 
-class AppointmentService {
-  async createAppointment(appointmentData, documentUrl = null) {
-    const { fullName, phone, gender, serviceId, timeSlotId } = appointmentData;
+const READ_TRANSACTION_OPTIONS = {
+  isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
+  maxWait: 8000,
+  timeout: 15000,
+};
 
-    const serviceIdNum = Number(serviceId);
-    const timeSlotIdNum = Number(timeSlotId);
+const appointmentInclude = {
+  group: {
+    include: {
+      resident: true,
+    },
+  },
+  service: {
+    include: {
+      department: true,
+    },
+  },
+  feedback: true,
+};
+
+const appointmentCreateSelect = {
+  id: true,
+  status: true,
+  documentUrl: true,
+  createdAt: true,
+  updatedAt: true,
+  serviceId: true,
+  slotDate: true,
+  slotStartTime: true,
+  slotEndTime: true,
+  groupId: true,
+  group: {
+    select: {
+      appointmentNumber: true,
+      resident: {
+        select: {
+          id: true,
+          fullName: true,
+          phone: true,
+          gender: true,
+          documentUrl: true,
+        },
+      },
+    },
+  },
+  service: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      durationInMinutes: true,
+      staffCount: true,
+      departmentId: true,
+      department: { select: { id: true, name: true } },
+    },
+  },
+};
+
+function withPublicNumber(apt) {
+  if (!apt) return apt;
+  const mapped = attachTimeSlot(apt);
+  const { group, ...rest } = mapped;
+  return {
+    ...rest,
+    appointmentNumber: group?.appointmentNumber,
+    resident: group?.resident,
+  };
+}
+
+function startOfDayUtc(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function assertMoreThanOneDayBeforeSlot(slotDate) {
+  const slotDay = startOfDayUtc(slotDate);
+  const today = startOfDayUtc(new Date());
+  const diffMs = slotDay.getTime() - today.getTime();
+  const diffDays = diffMs / 86400000;
+  if (diffDays <= 1) {
+    throw new Error(
+      'This change is only allowed when more than one full day remains before the appointment date.'
+    );
+  }
+}
+
+function parseBookingSlot(appointmentData) {
+  const { serviceId, slotDate, slotStart, timeSlotId } = appointmentData;
+
+  if (slotDate && slotStart) {
+    return {
+      serviceId: Number(serviceId),
+      slotDate: String(slotDate),
+      slotStart: String(slotStart),
+    };
+  }
+
+  if (timeSlotId != null) {
+    throw new Error('timeSlotId is no longer supported; use slotDate and slotStart');
+  }
+
+  throw new Error('slotDate and slotStart are required');
+}
+
+class AppointmentService {
+  async getAvailableSlots(serviceId, date) {
+    return slotAvailability.getAvailableSlotsForServiceDate(serviceId, date);
+  }
+
+  async createAppointment(appointmentData, documentUrl = null, formResponseRows = null) {
+    const { fullName, phone, gender } = appointmentData;
+    const { serviceId, slotDate, slotStart } = parseBookingSlot(appointmentData);
+
+    const resolved = await slotAvailability.resolveBookableSlot(serviceId, slotDate, slotStart);
 
     const maxAttempts = 8;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       const appointmentNumber = generateAppointmentNumber();
       try {
         return await prisma.$transaction(async (tx) => {
-          const timeSlot = await tx.timeSlot.findUnique({
-            where: { id: timeSlotIdNum },
-            include: { service: true },
+          await slotAvailability.assertSlotHasCapacity(tx, {
+            serviceId: resolved.service.id,
+            slotDate: resolved.dayStart,
+            slotStartTime: resolved.slotStartTime,
+            staffCount: resolved.staffCount,
           });
 
-          if (!timeSlot) {
-            throw new Error('Time slot not found');
-          }
+          const resident = await tx.resident.upsert({
+            where: { phone },
+            create: {
+              fullName,
+              phone,
+              gender,
+              documentUrl: documentUrl != null && documentUrl !== '' ? documentUrl : null,
+            },
+            update: {
+              fullName,
+              gender,
+              ...(documentUrl != null && documentUrl !== '' ? { documentUrl } : {}),
+            },
+            select: { id: true },
+          });
 
-          if (timeSlot.serviceId !== serviceIdNum) {
-            throw new Error('Selected slot does not belong to the selected service');
-          }
-
-          if (!timeSlot.isAvailable || timeSlot.bookedCount >= timeSlot.maxCapacity) {
-            throw new Error('Time slot is fully booked');
-          }
-
-          let resident = await tx.resident.findUnique({ where: { phone } });
-
-          if (!resident) {
-            resident = await tx.resident.create({
-              data: {
-                fullName,
-                phone,
-                gender,
-                documentUrl,
-              },
-            });
-          } else {
-            resident = await tx.resident.update({
-              where: { id: resident.id },
-              data: {
-                fullName,
-                gender,
-                ...(documentUrl !== null && documentUrl !== undefined
-                  ? { documentUrl }
-                  : {}),
-              },
-            });
-          }
-
-          const newBooked = timeSlot.bookedCount + 1;
-
-          const appointment = await tx.appointment.create({
+          const group = await tx.appointmentGroup.create({
             data: {
               appointmentNumber,
               residentId: resident.id,
-              serviceId: serviceIdNum,
-              timeSlotId: timeSlotIdNum,
+            },
+            select: { id: true },
+          });
+
+          const appointment = await tx.appointment.create({
+            data: {
+              groupId: group.id,
+              serviceId: resolved.service.id,
+              slotDate: resolved.dayStart,
+              slotStartTime: resolved.slotStartTime,
+              slotEndTime: resolved.slotEndTime,
               ...(documentUrl != null && documentUrl !== ''
                 ? { documentUrl }
                 : {}),
             },
-            include: {
-              resident: true,
-              service: {
-                include: {
-                  department: true,
-                },
-              },
-              timeSlot: true,
-            },
+            select: appointmentCreateSelect,
           });
 
-          await tx.timeSlot.update({
-            where: { id: timeSlotIdNum },
-            data: {
-              bookedCount: newBooked,
-              isAvailable: newBooked < timeSlot.maxCapacity,
-            },
-          });
+          if (formResponseRows?.length) {
+            await formSubmissionService.createSubmission(tx, {
+              serviceId: resolved.service.id,
+              appointmentId: appointment.id,
+              residentId: resident.id,
+              rows: formResponseRows,
+            });
+          }
 
-          return appointment;
-        }, TRANSACTION_OPTIONS);
+          const withResponses = await formSubmissionService.attachSubmissionToAppointment(appointment);
+          return withPublicNumber(withResponses);
+        }, BOOKING_TRANSACTION_OPTIONS);
       } catch (err) {
         if (err.code === 'P2002') {
           const targets = Array.isArray(err.meta?.target) ? err.meta.target : [];
-          const isAppointmentNumberDup = targets.includes('appointmentNumber');
-          if (isAppointmentNumberDup) {
+          if (targets.includes('appointmentNumber')) {
             continue;
           }
         }
@@ -450,18 +206,24 @@ class AppointmentService {
     throw new Error('Unable to generate a unique appointment number, please try again');
   }
 
-  async rescheduleAppointment(appointmentId, { phone, timeSlotId }) {
+  async rescheduleAppointment(appointmentId, { phone, slotDate, slotStart, timeSlotId }) {
+    if (timeSlotId != null) {
+      throw new Error('timeSlotId is no longer supported; use slotDate and slotStart');
+    }
+
     return prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.findUnique({
         where: { id: appointmentId },
-        include: { resident: true, timeSlot: true },
+        include: {
+          group: { include: { resident: true } },
+        },
       });
 
       if (!appointment) {
         throw new Error('Appointment not found');
       }
 
-      if (appointment.resident.phone !== phone) {
+      if (appointment.group.resident.phone !== phone) {
         throw new Error('Verification failed for this appointment');
       }
 
@@ -473,101 +235,71 @@ class AppointmentService {
         throw new Error('Cannot reschedule a completed appointment');
       }
 
-      const newSnap = await tx.timeSlot.findUnique({
-        where: { id: timeSlotId },
-        include: { service: true },
-      });
+      assertMoreThanOneDayBeforeSlot(appointment.slotDate);
 
-      if (!newSnap) {
-        throw new Error('Time slot not found');
+      const resolved = await slotAvailability.resolveBookableSlot(
+        appointment.serviceId,
+        slotDate,
+        slotStart
+      );
+
+      const sameSlot =
+        appointment.slotDate.getTime() === resolved.dayStart.getTime() &&
+        appointment.slotStartTime.getTime() === resolved.slotStartTime.getTime();
+
+      if (sameSlot) {
+        return withPublicNumber(
+          attachTimeSlot(
+            await tx.appointment.findUnique({
+              where: { id: appointmentId },
+              include: appointmentInclude,
+            })
+          )
+        );
       }
 
-      if (newSnap.serviceId !== appointment.serviceId) {
-        throw new Error('Invalid slot for this service');
-      }
-
-      if (appointment.timeSlotId === timeSlotId) {
-        return tx.appointment.findUnique({
-          where: { id: appointmentId },
-          include: {
-            resident: true,
-            service: {
-              include: {
-                department: true,
-              },
-            },
-            timeSlot: true,
-          },
-        });
-      }
-
-      if (!newSnap.isAvailable || newSnap.bookedCount >= newSnap.maxCapacity) {
-        throw new Error('Time slot is fully booked');
-      }
-
-      const oldSnap = await tx.timeSlot.findUnique({
-        where: { id: appointment.timeSlotId },
-      });
-
-      if (!oldSnap) {
-        throw new Error('Original time slot not found');
-      }
-
-      const oldBookedAfter = Math.max(0, oldSnap.bookedCount - 1);
-
-      await tx.timeSlot.update({
-        where: { id: oldSnap.id },
-        data: {
-          bookedCount: oldBookedAfter,
-          isAvailable: oldBookedAfter < oldSnap.maxCapacity,
-        },
-      });
-
-      const newBookedAfter = newSnap.bookedCount + 1;
-
-      await tx.timeSlot.update({
-        where: { id: timeSlotId },
-        data: {
-          bookedCount: newBookedAfter,
-          isAvailable: newBookedAfter < newSnap.maxCapacity,
-        },
+      await slotAvailability.assertSlotHasCapacity(tx, {
+        serviceId: appointment.serviceId,
+        slotDate: resolved.dayStart,
+        slotStartTime: resolved.slotStartTime,
+        staffCount: resolved.staffCount,
       });
 
       await tx.appointment.update({
         where: { id: appointmentId },
         data: {
-          timeSlotId,
+          slotDate: resolved.dayStart,
+          slotStartTime: resolved.slotStartTime,
+          slotEndTime: resolved.slotEndTime,
           status: APPOINTMENT_STATUS.PENDING,
         },
       });
 
-      return tx.appointment.findUnique({
-        where: { id: appointmentId },
-        include: {
-          resident: true,
-          service: {
-            include: {
-              department: true,
-            },
-          },
-          timeSlot: true,
-        },
-      });
-    }, TRANSACTION_OPTIONS);
+      return withPublicNumber(
+        attachTimeSlot(
+          await tx.appointment.findUnique({
+            where: { id: appointmentId },
+            include: appointmentInclude,
+          })
+        )
+      );
+    }, BOOKING_TRANSACTION_OPTIONS);
   }
 
   async cancelAppointmentById(appointmentId, phone) {
     return prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.findUnique({
         where: { id: appointmentId },
-        include: { resident: true, timeSlot: true },
+        include: {
+          group: { include: { resident: true } },
+        },
       });
 
       if (!appointment) {
         throw new Error('Appointment not found');
       }
 
-      if (appointment.resident.phone !== phone) {
+      if (appointment.group.resident.phone !== phone) {
         throw new Error('Verification failed for this appointment');
       }
 
@@ -579,31 +311,13 @@ class AppointmentService {
         throw new Error('Only pending appointments can be cancelled');
       }
 
-      const slotSnap = await tx.timeSlot.findUnique({
-        where: { id: appointment.timeSlotId },
-      });
-
-      if (!slotSnap) {
-        throw new Error('Time slot not found');
-      }
-
-      const newBooked = Math.max(0, slotSnap.bookedCount - 1);
-
-      await tx.timeSlot.update({
-        where: { id: slotSnap.id },
-        data: {
-          bookedCount: newBooked,
-          isAvailable: newBooked < slotSnap.maxCapacity,
-        },
-      });
-
       await tx.appointment.update({
         where: { id: appointmentId },
         data: { status: APPOINTMENT_STATUS.CANCELLED },
       });
 
       return { id: appointmentId, status: APPOINTMENT_STATUS.CANCELLED };
-    }, TRANSACTION_OPTIONS);
+    }, READ_TRANSACTION_OPTIONS);
   }
 
   async updateAppointmentStatus(appointmentId, status) {
@@ -615,53 +329,328 @@ class AppointmentService {
       throw new Error('Appointment not found');
     }
 
-    return prisma.appointment.update({
+    const updated = await prisma.appointment.update({
       where: { id: appointmentId },
       data: { status },
-      include: {
-        resident: true,
-        service: {
-          include: {
-            department: true,
-          },
-        },
-        timeSlot: true,
-      },
+      include: appointmentInclude,
     });
+
+    return withPublicNumber(attachTimeSlot(updated));
   }
 
   async getUserAppointments(residentId) {
-    return prisma.appointment.findMany({
-      where: { residentId },
-      include: {
-        service: {
-          include: {
-            department: true,
-          },
-        },
-        timeSlot: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+    const rows = await prisma.appointment.findMany({
+      where: { group: { residentId } },
+      include: appointmentInclude,
+      orderBy: { createdAt: 'desc' },
     });
+    const withSlots = attachTimeSlotMany(rows).map(withPublicNumber);
+    return formSubmissionService.attachSubmissionsToMany(withSlots);
   }
 
-  async getStaffAppointments() {
-    return prisma.appointment.findMany({
+  async getStaffAppointments(staffUserId) {
+    const assignments = await prisma.staffServiceAssignment.findMany({
+      where: { staffUserId },
+      select: { serviceId: true },
+    });
+    const serviceIds = [...new Set(assignments.map((a) => a.serviceId))];
+
+    if (serviceIds.length === 0) {
+      return [];
+    }
+
+    const rows = await prisma.appointment.findMany({
+      where: {
+        serviceId: { in: serviceIds },
+      },
+      include: appointmentInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+    const mapped = attachTimeSlotMany(rows).map((a) => {
+      const flat = withPublicNumber(a);
+      delete flat.feedback;
+      return flat;
+    });
+    return formSubmissionService.attachSubmissionsToMany(mapped);
+  }
+
+  async getAppointmentGroupBundleByNumber(appointmentNumber) {
+    const group = await prisma.appointmentGroup.findUnique({
+      where: { appointmentNumber },
       include: {
         resident: true,
-        service: {
+        appointments: {
           include: {
-            department: true,
+            service: { include: { department: true } },
+            feedback: true,
           },
+          orderBy: { id: 'asc' },
         },
-        timeSlot: true,
-      },
-      orderBy: {
-        createdAt: 'desc',
       },
     });
+    if (!group) return null;
+    return {
+      ...group,
+      appointments: attachTimeSlotMany(group.appointments),
+    };
+  }
+
+  async getAppointmentByRef(ref) {
+    if (isAppointmentNumberRef(ref)) {
+      const group = await this.getAppointmentGroupBundleByNumber(ref.trim());
+      if (!group) {
+        throw new Error('Appointment not found');
+      }
+      const items = await formSubmissionService.attachSubmissionsToMany(
+        group.appointments.map((a) => attachTimeSlot({ ...a, group }))
+      );
+      return {
+        appointmentNumber: group.appointmentNumber,
+        resident: group.resident,
+        items: items.map((a) => withPublicNumber(a)),
+      };
+    }
+
+    const id = parseInt(ref, 10);
+    if (!Number.isNaN(id)) {
+      const apt = await prisma.appointment.findUnique({
+        where: { id },
+        include: appointmentInclude,
+      });
+      if (!apt) {
+        throw new Error('Appointment not found');
+      }
+      const withResponses = await formSubmissionService.attachSubmissionToAppointment(
+        attachTimeSlot(apt)
+      );
+      return withPublicNumber(withResponses);
+    }
+
+    throw new Error('Invalid appointment reference');
+  }
+
+  async updateAppointmentFormResponses(appointmentId, { phone }, formResponseRows) {
+    return prisma.$transaction(async (tx) => {
+      const appointment = await tx.appointment.findUnique({
+        where: { id: appointmentId },
+        include: {
+          group: { include: { resident: true } },
+        },
+      });
+
+      if (!appointment) {
+        throw new Error('Appointment not found');
+      }
+
+      if (appointment.group.resident.phone !== phone) {
+        throw new Error('Verification failed for this appointment');
+      }
+
+      if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
+        throw new Error('Cannot edit a cancelled appointment');
+      }
+
+      if (appointment.status === APPOINTMENT_STATUS.COMPLETED) {
+        throw new Error('Cannot edit a completed appointment');
+      }
+
+      const aptRow = await tx.appointment.findUnique({
+        where: { id: appointmentId },
+        select: { serviceId: true, group: { select: { residentId: true } } },
+      });
+
+      if (formResponseRows?.length && aptRow) {
+        await formSubmissionService.upsertSubmissionValues(
+          tx,
+          appointmentId,
+          aptRow.serviceId,
+          aptRow.group.residentId,
+          formResponseRows
+        );
+      }
+
+      const updated = await tx.appointment.findUnique({
+        where: { id: appointmentId },
+        select: appointmentCreateSelect,
+      });
+
+      const withResponses = await formSubmissionService.attachSubmissionToAppointment(updated);
+      return withPublicNumber(withResponses);
+    }, BOOKING_TRANSACTION_OPTIONS);
+  }
+
+  async updateFormResponsesByRef(appointmentRef, { phone, appointmentItemId }, formResponseRows) {
+    if (isAppointmentNumberRef(appointmentRef)) {
+      const group = await prisma.appointmentGroup.findUnique({
+        where: { appointmentNumber: appointmentRef.trim() },
+        include: {
+          appointments: {
+            where: { status: APPOINTMENT_STATUS.PENDING },
+          },
+        },
+      });
+      if (!group) throw new Error('Appointment not found');
+      let line = group.appointments[0];
+      if (appointmentItemId != null) {
+        line = group.appointments.find((a) => a.id === Number(appointmentItemId));
+      }
+      if (!line) throw new Error('No editable appointment line found');
+      return this.updateAppointmentFormResponses(line.id, { phone }, formResponseRows);
+    }
+
+    const id = parseInt(appointmentRef, 10);
+    if (!Number.isNaN(id)) {
+      return this.updateAppointmentFormResponses(id, { phone }, formResponseRows);
+    }
+    throw new Error('Invalid appointment reference');
+  }
+
+  async cancelByAppointmentNumber(appointmentNumber, phone, appointmentItemId) {
+    if (appointmentItemId != null) {
+      const apt = await prisma.appointment.findFirst({
+        where: {
+          id: Number(appointmentItemId),
+          group: { appointmentNumber },
+        },
+        include: {
+          group: { include: { resident: true } },
+        },
+      });
+      if (!apt) {
+        throw new Error('Appointment not found');
+      }
+      if (apt.group.resident.phone !== phone) {
+        throw new Error('Verification failed for this appointment');
+      }
+      return this.cancelAppointmentById(apt.id, phone);
+    }
+    return this.cancelAppointmentGroupByNumber(appointmentNumber, phone);
+  }
+
+  async cancelAppointmentGroupByNumber(appointmentNumber, phone) {
+    return prisma.$transaction(async (tx) => {
+      const group = await tx.appointmentGroup.findUnique({
+        where: { appointmentNumber },
+        include: {
+          resident: true,
+          appointments: {
+            where: { status: APPOINTMENT_STATUS.PENDING },
+          },
+        },
+      });
+
+      if (!group) {
+        throw new Error('Appointment not found');
+      }
+
+      if (group.resident.phone !== phone) {
+        throw new Error('Verification failed for this appointment');
+      }
+
+      for (const apt of group.appointments) {
+        await tx.appointment.update({
+          where: { id: apt.id },
+          data: { status: APPOINTMENT_STATUS.CANCELLED },
+        });
+      }
+
+      return { appointmentNumber, cancelled: group.appointments.length };
+    }, READ_TRANSACTION_OPTIONS);
+  }
+
+  async rescheduleByAppointmentNumber(appointmentNumber, { phone, slotDate, slotStart, appointmentItemId }) {
+    const group = await prisma.appointmentGroup.findUnique({
+      where: { appointmentNumber },
+      include: {
+        resident: true,
+        appointments: {
+          where: { status: APPOINTMENT_STATUS.PENDING },
+        },
+      },
+    });
+
+    if (!group) {
+      throw new Error('Appointment not found');
+    }
+
+    if (group.resident.phone !== phone) {
+      throw new Error('Verification failed for this appointment');
+    }
+
+    let line = group.appointments[0];
+    if (appointmentItemId != null) {
+      line = group.appointments.find((a) => a.id === Number(appointmentItemId));
+    }
+    if (!line) {
+      throw new Error('No pending appointment line found for this reference');
+    }
+
+    if (group.appointments.length > 1 && appointmentItemId == null) {
+      throw new Error('appointmentItemId is required when the booking has multiple active services');
+    }
+
+    return this.rescheduleAppointment(line.id, { phone, slotDate, slotStart });
+  }
+
+  async addServiceToBooking(appointmentNumber, { phone, serviceId, slotDate, slotStart, documentUrl }) {
+    const serviceIdNum = Number(serviceId);
+    const resolved = await slotAvailability.resolveBookableSlot(serviceIdNum, slotDate, slotStart);
+
+    const group = await prisma.appointmentGroup.findUnique({
+      where: { appointmentNumber },
+      include: {
+        resident: true,
+        appointments: {
+          where: { status: APPOINTMENT_STATUS.PENDING },
+        },
+      },
+    });
+
+    if (!group) {
+      throw new Error('Appointment not found');
+    }
+
+    if (group.resident.phone !== phone) {
+      throw new Error('Verification failed for this appointment');
+    }
+
+    const already = group.appointments.some((a) => a.serviceId === serviceIdNum);
+    if (already) {
+      throw new Error('This service is already part of the booking');
+    }
+
+    const earliest = group.appointments
+      .map((a) => a.slotDate)
+      .filter(Boolean)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+    if (earliest) {
+      assertMoreThanOneDayBeforeSlot(earliest);
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await slotAvailability.assertSlotHasCapacity(tx, {
+        serviceId: serviceIdNum,
+        slotDate: resolved.dayStart,
+        slotStartTime: resolved.slotStartTime,
+        staffCount: resolved.staffCount,
+      });
+
+      const appointment = await tx.appointment.create({
+        data: {
+          groupId: group.id,
+          serviceId: serviceIdNum,
+          slotDate: resolved.dayStart,
+          slotStartTime: resolved.slotStartTime,
+          slotEndTime: resolved.slotEndTime,
+          ...(documentUrl != null && documentUrl !== ''
+            ? { documentUrl }
+            : {}),
+        },
+        select: appointmentCreateSelect,
+      });
+
+      return withPublicNumber(appointment);
+    }, BOOKING_TRANSACTION_OPTIONS);
   }
 }
 

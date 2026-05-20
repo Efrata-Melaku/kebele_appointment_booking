@@ -1,6 +1,5 @@
 const prisma = require('../../prisma/client');
 const { successResponse, errorResponse } = require('../../utils/response');
-
 class ServiceController {
   async createService(req, res) {
     try {
@@ -8,13 +7,11 @@ class ServiceController {
         name,
         description,
         durationInMinutes,
-        staffCount,
         requiredDocuments,
         hasTeyazeRequirement,
         departmentId,
       } = req.body;
 
-      // Check if department exists
       const department = await prisma.department.findUnique({
         where: { id: departmentId },
       });
@@ -23,12 +20,24 @@ class ServiceController {
         return errorResponse(res, 'Department not found', 404);
       }
 
+      const trimmedName = String(name).trim();
+      const duplicate = await prisma.service.findFirst({
+        where: {
+          departmentId,
+          name: trimmedName,
+        },
+      });
+
+      if (duplicate) {
+        return errorResponse(res, 'A service with this name already exists in the selected department', 400);
+      }
+
       const service = await prisma.service.create({
         data: {
-          name,
+          name: trimmedName,
           description,
           durationInMinutes,
-          staffCount,
+          staffCount: 0,
           requiredDocuments,
           hasTeyazeRequirement,
           departmentId,
@@ -40,6 +49,13 @@ class ServiceController {
 
       successResponse(res, 'Service created successfully', service, 201);
     } catch (error) {
+      if (error.code === 'P2002') {
+        return errorResponse(
+          res,
+          'A service with this name already exists in the selected department',
+          400
+        );
+      }
       errorResponse(res, 'Failed to create service', 500);
     }
   }
@@ -50,7 +66,7 @@ class ServiceController {
         include: {
           department: true,
           _count: {
-            select: { appointments: true, timeSlots: true },
+            select: { appointments: true, staffServiceAssignments: true },
           },
         },
         orderBy: { name: 'asc' },
@@ -67,14 +83,14 @@ class ServiceController {
       const { id } = req.params;
 
       const service = await prisma.service.findUnique({
-        where: { id: parseInt(id) },
+        where: { id: parseInt(id, 10) },
         include: {
           department: true,
-          timeSlots: {
-            orderBy: { date: 'asc' },
+          formFields: {
+            orderBy: [{ order: 'asc' }, { id: 'asc' }],
           },
           _count: {
-            select: { appointments: true },
+            select: { appointments: true, staffServiceAssignments: true },
           },
         },
       });
@@ -96,19 +112,29 @@ class ServiceController {
         name,
         description,
         durationInMinutes,
-        staffCount,
         requiredDocuments,
         hasTeyazeRequirement,
         departmentId,
       } = req.body;
 
+      const trimmedName = String(name).trim();
+      const dup = await prisma.service.findFirst({
+        where: {
+          departmentId,
+          name: trimmedName,
+          NOT: { id: parseInt(id, 10) },
+        },
+      });
+      if (dup) {
+        return errorResponse(res, 'A service with this name already exists in the selected department', 400);
+      }
+
       const service = await prisma.service.update({
-        where: { id: parseInt(id) },
+        where: { id: parseInt(id, 10) },
         data: {
-          name,
+          name: trimmedName,
           description,
           durationInMinutes,
-          staffCount,
           requiredDocuments,
           hasTeyazeRequirement,
           departmentId,
@@ -132,7 +158,7 @@ class ServiceController {
       const { id } = req.params;
 
       await prisma.service.delete({
-        where: { id: parseInt(id) },
+        where: { id: parseInt(id, 10) },
       });
 
       successResponse(res, 'Service deleted successfully');
@@ -149,11 +175,11 @@ class ServiceController {
       const { departmentId } = req.params;
 
       const services = await prisma.service.findMany({
-        where: { departmentId: parseInt(departmentId) },
+        where: { departmentId: parseInt(departmentId, 10) },
         include: {
           department: true,
           _count: {
-            select: { appointments: true, timeSlots: true },
+            select: { appointments: true, staffServiceAssignments: true },
           },
         },
         orderBy: { name: 'asc' },
@@ -162,6 +188,54 @@ class ServiceController {
       successResponse(res, 'Services retrieved successfully', services);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve services', 500);
+    }
+  }
+
+  /** GET /api/admin/services/duplicate-check?departmentId=&name= */
+  async duplicateServiceCheck(req, res) {
+    try {
+      const departmentId = parseInt(String(req.query.departmentId), 10);
+      const name = String(req.query.name || '').trim();
+      if (!departmentId || !name) {
+        return errorResponse(res, 'departmentId and name are required', 400);
+      }
+      const exists = await prisma.service.findFirst({
+        where: { departmentId, name },
+      });
+      successResponse(res, 'OK', { exists: Boolean(exists) });
+    } catch (error) {
+      errorResponse(res, 'Check failed', 500);
+    }
+  }
+
+  /** GET /api/user/services/:serviceId/form-fields */
+  async getUserServiceFormFields(req, res) {
+    try {
+      const serviceId = parseInt(req.params.serviceId, 10);
+      const service = await prisma.service.findUnique({
+        where: { id: serviceId },
+        select: { id: true, name: true, departmentId: true },
+      });
+      if (!service) {
+        return errorResponse(res, 'Service not found', 404);
+      }
+      const fields = await prisma.serviceFormField.findMany({
+        where: { serviceId, isActive: true },
+        orderBy: [{ order: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          label: true,
+          fieldType: true,
+          placeholder: true,
+          required: true,
+          options: true,
+          order: true,
+          isActive: true,
+        },
+      });
+      successResponse(res, 'Form fields retrieved successfully', { service, fields });
+    } catch (error) {
+      errorResponse(res, 'Failed to retrieve form fields', 500);
     }
   }
 }

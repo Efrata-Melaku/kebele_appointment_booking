@@ -4,13 +4,16 @@ import { AdminDashboard } from "./components/admin/AdminDashboard";
 import { ManageStaff } from "./components/admin/ManageStaff";
 import { HouseownerRecords } from "./components/admin/HouseownerRecords";
 import { AppointmentLimits } from "./components/admin/AppointmentLimits";
+import { ScheduleOverrides } from "./components/admin/ScheduleOverrides";
 import { ServicesManagement } from "./components/admin/ServicesManagement";
+import { ServiceFormBuilder } from "./components/admin/ServiceFormBuilder";
 import { Feedback } from "./components/admin/Feedback";
 import { Reports } from "./components/admin/Reports";
 import { Settings } from "./components/admin/Settings";
 import { StaffDashboard } from "./components/staff/StaffDashboard";
 import { UserDashboard } from "./components/user/UserDashboard";
-import { BookAppointment } from "./components/user/BookAppointment";
+import { ServiceCatalog } from "./components/user/ServiceCatalog";
+import { ServiceBooking } from "./components/user/ServiceBooking";
 import { MyAppointments } from "./components/user/MyAppointments";
 import { RoleSelector } from "./components/RoleSelector";
 import { LoginPage } from "./components/LoginPage";
@@ -32,7 +35,9 @@ export const router = createBrowserRouter([
       { path: "staff", Component: ManageStaff },
       { path: "houseowners", Component: HouseownerRecords },
       { path: "limits", Component: AppointmentLimits },
+      { path: "schedule", Component: ScheduleOverrides },
       { path: "services", Component: ServicesManagement },
+      { path: "form-builder", Component: ServiceFormBuilder },
       { path: "feedback", Component: Feedback },
       { path: "reports", Component: Reports },
       { path: "settings", Component: Settings },
@@ -50,7 +55,8 @@ export const router = createBrowserRouter([
     Component: DashboardLayout,
     children: [
       { index: true, Component: UserDashboard },
-      { path: "book", Component: BookAppointment },
+      { path: "book", Component: ServiceCatalog },
+      { path: "book/:serviceId", Component: ServiceBooking },
       { path: "appointments", Component: MyAppointments },
     ],
   },

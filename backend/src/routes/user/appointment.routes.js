@@ -1,42 +1,63 @@
 const express = require('express');
 const appointmentController = require('../../controllers/user/appointment.controller');
-const { uploadSingle, handleUploadError } = require('../../middleware/upload.middleware');
+const { uploadDynamicFiles, uploadSingle, handleUploadError } = require('../../middleware/upload.middleware');
 const validate = require('../../middleware/validate.middleware');
 const {
   createAppointmentSchema,
   rescheduleAppointmentSchema,
   cancelAppointmentQuerySchema,
+  addBookingServiceSchema,
+  availableSlotsQuerySchema,
+  updateAppointmentFormResponsesSchema,
 } = require('../../utils/validators');
 
 const router = express.Router();
 
-// POST /api/user/appointments
+// GET /api/user/appointments/available-slots?serviceId=1&date=2026-05-10
+router.get(
+  '/available-slots',
+  validate.validateQuery(availableSlotsQuerySchema),
+  appointmentController.getAvailableSlots
+);
+
 router.post(
   '/',
-  uploadSingle('document'),
+  uploadDynamicFiles(),
   handleUploadError,
   validate(createAppointmentSchema),
   appointmentController.createAppointment
 );
 
-// GET /api/user/appointments
 router.get('/', appointmentController.getUserAppointments);
 
-// GET /api/user/appointments/:id
-router.get('/:id', appointmentController.getAppointmentById);
-
-// PUT /api/user/appointments/:id — reschedule to another available slot (same service)
-router.put(
-  '/:id',
-  validate(rescheduleAppointmentSchema),
-  appointmentController.rescheduleAppointment
+router.post(
+  '/:appointmentRef/services',
+  uploadSingle('document'),
+  handleUploadError,
+  validate(addBookingServiceSchema),
+  appointmentController.addServiceToBooking
 );
 
-// DELETE /api/user/appointments/:id — cancel booking (requires ?phone=)
+router.put(
+  '/:appointmentRef/form-responses',
+  uploadDynamicFiles(),
+  handleUploadError,
+  validate(updateAppointmentFormResponsesSchema),
+  appointmentController.updateAppointmentFormResponses
+);
+
+router.get('/:appointmentRef', appointmentController.getAppointmentByRef);
+
+router.put(
+  '/:appointmentRef',
+  validate(rescheduleAppointmentSchema),
+  appointmentController.rescheduleAppointmentByRef
+);
+
 router.delete(
-  '/:id',
+  '/:appointmentRef',
   validate.validateQuery(cancelAppointmentQuerySchema),
-  appointmentController.cancelAppointment
+  appointmentController.cancelAppointmentByRef
 );
 
 module.exports = router;

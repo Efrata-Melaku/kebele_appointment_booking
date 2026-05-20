@@ -113,8 +113,12 @@ class FeedbackController {
         include: {
           appointment: {
             include: {
-              resident: {
-                select: { fullName: true },
+              group: {
+                include: {
+                  resident: {
+                    select: { fullName: true },
+                  },
+                },
               },
               service: {
                 include: {

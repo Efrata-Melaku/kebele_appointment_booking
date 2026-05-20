@@ -2,11 +2,21 @@ const prisma = require('../../prisma/client');
 const appointmentService = require('../../services/appointment.service');
 const { APPOINTMENT_STATUS } = require('../../config/constants');
 const { successResponse, errorResponse } = require('../../utils/response');
+const { attachTimeSlot } = require('../../utils/appointmentSlot');
+
+function flattenAppointment(apt) {
+  if (!apt) return apt;
+  return {
+    ...apt,
+    appointmentNumber: apt.group?.appointmentNumber,
+    resident: apt.group?.resident,
+  };
+}
 
 class AppointmentStatusController {
   async getAppointments(req, res) {
     try {
-      const appointments = await appointmentService.getStaffAppointments();
+      const appointments = await appointmentService.getStaffAppointments(req.user.id);
 
       successResponse(res, 'Appointments retrieved successfully', appointments);
     } catch (error) {
@@ -50,15 +60,14 @@ class AppointmentStatusController {
       const { id } = req.params;
 
       const appointment = await prisma.appointment.findUnique({
-        where: { id: parseInt(id) },
+        where: { id: parseInt(id, 10) },
         include: {
-          resident: true,
+          group: { include: { resident: true } },
           service: {
             include: {
               department: true,
             },
           },
-          timeSlot: true,
           feedback: true,
         },
       });
@@ -67,7 +76,11 @@ class AppointmentStatusController {
         return errorResponse(res, 'Appointment not found', 404);
       }
 
-      successResponse(res, 'Appointment retrieved successfully', appointment);
+      successResponse(
+        res,
+        'Appointment retrieved successfully',
+        attachTimeSlot(flattenAppointment(appointment))
+      );
     } catch (error) {
       errorResponse(res, 'Failed to retrieve appointment', 500);
     }

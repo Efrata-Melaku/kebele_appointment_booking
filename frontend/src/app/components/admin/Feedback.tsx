@@ -10,6 +10,7 @@ type Row = {
   appointment?: {
     appointmentNumber?: string;
     resident?: { fullName?: string };
+    group?: { appointmentNumber?: string; resident?: { fullName?: string } };
     service?: { name?: string };
   };
 };
@@ -94,8 +95,14 @@ export function Feedback() {
               ) : (
                 rows.map((r) => (
                   <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-3 px-4">{r.appointment?.resident?.fullName ?? '—'}</td>
-                    <td className="py-3 px-4">{r.appointment?.appointmentNumber ?? '—'}</td>
+                    <td className="py-3 px-4">
+                      {r.appointment?.group?.resident?.fullName ??
+                        r.appointment?.resident?.fullName ??
+                        '—'}
+                    </td>
+                    <td className="py-3 px-4">
+                      {r.appointment?.group?.appointmentNumber ?? r.appointment?.appointmentNumber ?? '—'}
+                    </td>
                     <td className="py-3 px-4">{r.appointment?.service?.name ?? '—'}</td>
                     <td className="py-3 px-4">{r.rating ?? '—'}</td>
                     <td className="py-3 px-4 max-w-xs truncate">{r.comment || '—'}</td>

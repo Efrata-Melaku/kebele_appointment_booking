@@ -25,6 +25,21 @@ class DepartmentController {
     }
   }
 
+  async duplicateCheck(req, res) {
+    try {
+      const name = String(req.query.name || '').trim();
+      if (name.length < 2) {
+        return successResponse(res, 'OK', { exists: false, checking: false });
+      }
+      const existing = await prisma.department.findFirst({
+        where: { name },
+      });
+      successResponse(res, 'OK', { exists: Boolean(existing) });
+    } catch (error) {
+      errorResponse(res, 'Check failed', 500);
+    }
+  }
+
   async getDepartments(req, res) {
     try {
       const departments = await prisma.department.findMany({
@@ -32,7 +47,7 @@ class DepartmentController {
           services: {
             include: {
               _count: {
-                select: { appointments: true, timeSlots: true },
+                select: { appointments: true },
               },
             },
           },
@@ -56,7 +71,7 @@ class DepartmentController {
           services: {
             include: {
               _count: {
-                select: { appointments: true, timeSlots: true },
+                select: { appointments: true },
               },
             },
           },
