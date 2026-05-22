@@ -13,4 +13,9 @@ export function responseFileFieldName(fieldId: number): string {
   return `file_${fieldId}`;
 }
 
-export type ResponsesMap = Record<string, string | number | boolean | File | undefined>;
+import type { UploadedFileMeta } from './uploadFile';
+
+export type ResponsesMap = Record<
+  string,
+  string | number | boolean | File | UploadedFileMeta | undefined
+>;

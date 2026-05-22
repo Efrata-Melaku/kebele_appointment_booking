@@ -156,6 +156,7 @@ model Appointment {
   updatedAt   DateTime          @updatedAt
   feedback    Feedback?
   formSubmission ServiceFormSubmission?
+  uploadedFiles UploadedFile[]
 
   @@index([serviceId, slotDate, slotStartTime])
   @@map("appointments")
@@ -189,10 +190,27 @@ model ServiceFormSubmissionValue {
   value        String                @db.Text
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
+  uploadedFile UploadedFile?
 
   @@unique([submissionId, formFieldId])
   @@index([formFieldId, value(length: 191)])
   @@map("service_form_submission_values")
+}
+
+/// Cloudinary file metadata linked to an appointment and form answer
+model UploadedFile {
+  id                Int                         @id @default(autoincrement())
+  appointmentId     Int
+  appointment       Appointment                 @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  submissionValueId Int?                        @unique
+  submissionValue   ServiceFormSubmissionValue? @relation(fields: [submissionValueId], references: [id], onDelete: SetNull)
+  fileName          String
+  fileUrl           String                      @db.Text
+  fileType          String?
+  uploadedAt        DateTime                    @default(now())
+
+  @@index([appointmentId])
+  @@map("uploaded_files")
 }
 
 model Feedback {

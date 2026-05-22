@@ -98,18 +98,31 @@ export function ServiceBooking() {
       };
       if (!b.success) {
         if (Array.isArray(b.details)) {
-          setTopErr((b.details as { message: string }[]).map((d) => d.message).join(' · '));
-        } else setTopErr(b.error || 'Failed');
-        return;
+          const err = new Error('Form validation failed') as Error & {
+            details?: { fieldId: number; label?: string; message: string }[];
+          };
+          err.details = b.details as { fieldId: number; label?: string; message: string }[];
+          throw err;
+        }
+        throw new Error(b.error || 'Failed');
       }
       setRefNo(b.data?.appointmentNumber ?? null);
       setDone(true);
       setTimeout(() => nav('/user/appointments'), 2200);
     } catch (e: unknown) {
-      const ax = e as { response?: { data?: { error?: string; details?: { message: string }[] } } };
-      const d = ax.response?.data?.details;
-      if (Array.isArray(d)) setTopErr(d.map((x) => x.message).join(' · '));
-      else setTopErr(ax.response?.data?.error || 'Booking failed');
+      const withDetails = e as Error & {
+        details?: { fieldId: number; message: string }[];
+        response?: { data?: { error?: string; details?: { fieldId: number; message: string }[] } };
+      };
+      if (withDetails.details?.length) throw e;
+      const d = withDetails.response?.data?.details;
+      if (Array.isArray(d) && d.length) {
+        throw Object.assign(new Error('Form validation failed'), { details: d });
+      }
+      setTopErr(
+        withDetails.response?.data?.error ||
+          (e instanceof Error ? e.message : 'Booking failed')
+      );
     }
   }
 

@@ -1,6 +1,17 @@
 import { z } from 'zod';
 import { parseFieldOptions, type FormResponseRow, type ServiceFormFieldDef } from './formTypes';
 import { responseFieldId } from './formPaths';
+import type { UploadedFileMeta } from './uploadFile';
+
+function hasFileValue(v: unknown): boolean {
+  if (v instanceof File) return true;
+  if (typeof v === 'string' && v.trim().length > 0) return true;
+  if (typeof v === 'object' && v !== null && 'fileUrl' in v) {
+    const url = String((v as UploadedFileMeta).fileUrl || '').trim();
+    return url.length > 0;
+  }
+  return false;
+}
 
 function buildSingleFieldZod(f: ServiceFormFieldDef): z.ZodTypeAny {
   const label = f.label;
@@ -8,39 +19,39 @@ function buildSingleFieldZod(f: ServiceFormFieldDef): z.ZodTypeAny {
   switch (f.fieldType) {
     case 'text':
     case 'textarea': {
-      if (f.required) {
-        return z.string().min(1, `${label} is required`);
-      }
-      return z.string().optional().or(z.literal(''));
+      const base = z.string().trim();
+      return f.required ? base.min(1, `${label} is required`) : base.optional().or(z.literal(''));
     }
     case 'number': {
       if (f.required) {
-        return z.coerce.number({ invalid_type_error: `${label} must be a number` });
+        return z
+          .union([z.literal(''), z.coerce.number({ invalid_type_error: `${label} must be a number` })])
+          .refine((v) => v !== '' && v !== null && !Number.isNaN(Number(v)), {
+            message: `${label} is required`,
+          });
       }
       return z
         .union([z.literal(''), z.coerce.number({ invalid_type_error: `${label} must be a number` })])
         .optional();
     }
     case 'date': {
-      if (f.required) {
-        return z.string().min(1, `${label} is required`);
-      }
-      return z.string().optional().or(z.literal(''));
+      const base = z.string().trim();
+      return f.required ? base.min(1, `${label} is required`) : base.optional().or(z.literal(''));
     }
     case 'select':
     case 'radio': {
       const opts = parseFieldOptions(f.options);
-      if (opts.length >= 2) {
-        const e = z.enum([opts[0], opts[1], ...opts.slice(2)] as [string, ...string[]], {
-          required_error: `${label} is required`,
-        });
-        return f.required ? e : e.optional().or(z.literal(''));
+      if (opts.length > 0) {
+        const base = z
+          .string()
+          .trim()
+          .refine((v) => !v || opts.includes(v), { message: `${label}: choose a valid option` });
+        return f.required
+          ? base.refine((v) => v.length > 0, { message: `${label} is required` })
+          : base.optional().or(z.literal(''));
       }
-      if (opts.length === 1) {
-        const lit = z.literal(opts[0]);
-        return f.required ? lit : lit.optional();
-      }
-      return f.required ? z.string().min(1, `${label} is required`) : z.string().optional();
+      const base = z.string().trim();
+      return f.required ? base.min(1, `${label} is required`) : base.optional().or(z.literal(''));
     }
     case 'checkbox': {
       if (f.required) {
@@ -50,15 +61,14 @@ function buildSingleFieldZod(f: ServiceFormFieldDef): z.ZodTypeAny {
     }
     case 'file': {
       if (f.required) {
-        return z.custom<File | string>(
-          (v) => v instanceof File || (typeof v === 'string' && v.length > 0),
-          { message: `${label} is required` }
-        );
+        return z.custom<unknown>((v) => hasFileValue(v), { message: `${label} is required` });
       }
-      return z.custom<File | string | undefined>(
-        (v) => v === undefined || v === '' || v instanceof File || typeof v === 'string',
-        { message: 'Invalid file' }
-      ).optional();
+      return z
+        .custom<unknown>(
+          (v) => v === undefined || v === '' || hasFileValue(v),
+          { message: 'Invalid file' }
+        )
+        .optional();
     }
     default:
       return z.any().optional();
@@ -107,7 +117,13 @@ export function buildResponsesDefaultsFromExisting(
     if (f.fieldType === 'checkbox') {
       responses[id] = ex.displayValue === true || ex.value === 'true';
     } else if (f.fieldType === 'file') {
-      responses[id] = ex.value ?? '';
+      if (ex.value) {
+        responses[id] = {
+          fileUrl: ex.value,
+          fileName: ex.value.split('/').pop() || 'file',
+          fileType: null,
+        };
+      }
     } else if (f.fieldType === 'number') {
       responses[id] = ex.displayValue ?? ex.value ?? '';
     } else {

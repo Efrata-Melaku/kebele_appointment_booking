@@ -22,6 +22,7 @@ const userFeedbackRoutes = require('./routes/user/feedback.routes');
 const userBookingRoutes = require('./routes/user/booking.routes');
 const userServiceRoutes = require('./routes/user/service.routes');
 const userTimeSlotRoutes = require('./routes/user/timeslot.routes');
+const userUploadRoutes = require('./routes/user/upload.routes');
 
 const errorHandler = require('./middleware/error.middleware');
 const protect = require('./middleware/auth.middleware');
@@ -46,7 +47,10 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// Legacy local uploads — new files are stored in Cloudinary only
+if (process.env.SERVE_LEGACY_UPLOADS === 'true') {
+  app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+}
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -65,6 +69,7 @@ app.use('/api/admin/form-fields', protect, authorize(USER_ROLES.ADMIN), adminFor
 
 app.use('/api/staff', protect, authorize(USER_ROLES.STAFF), staffAppointmentRoutes);
 
+app.use('/api/user/upload', userUploadRoutes);
 app.use('/api/user/booking', userBookingRoutes);
 app.use('/api/user/services', userServiceRoutes);
 app.use('/api/user/timeslots', userTimeSlotRoutes);

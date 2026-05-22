@@ -54,10 +54,42 @@ class ServiceFormFieldController {
     }
   }
 
+  /** PUT /api/admin/services/:id/form-fields/:fieldId */
+  async updateFormFieldForService(req, res) {
+    try {
+      const serviceId = parseInt(req.params.id, 10);
+      const fieldId = parseInt(req.params.fieldId, 10);
+      const existing = await prisma.serviceFormField.findUnique({ where: { id: fieldId } });
+      if (!existing || existing.serviceId !== serviceId) {
+        return errorResponse(res, 'Form field not found for this service', 404);
+      }
+      const field = await formFieldService.updateField(fieldId, req.body);
+      successResponse(res, 'Form field updated successfully', field);
+    } catch (error) {
+      handleServiceError(res, error, 'Failed to update form field');
+    }
+  }
+
   /** DELETE /api/admin/form-fields/:id — soft delete */
   async deleteFormField(req, res) {
     try {
       const fieldId = parseInt(req.params.id, 10);
+      const field = await formFieldService.deactivateField(fieldId);
+      successResponse(res, 'Form field deactivated successfully', field);
+    } catch (error) {
+      handleServiceError(res, error, 'Failed to deactivate form field');
+    }
+  }
+
+  /** DELETE /api/admin/services/:id/form-fields/:fieldId */
+  async deleteFormFieldForService(req, res) {
+    try {
+      const serviceId = parseInt(req.params.id, 10);
+      const fieldId = parseInt(req.params.fieldId, 10);
+      const existing = await prisma.serviceFormField.findUnique({ where: { id: fieldId } });
+      if (!existing || existing.serviceId !== serviceId) {
+        return errorResponse(res, 'Form field not found for this service', 404);
+      }
       const field = await formFieldService.deactivateField(fieldId);
       successResponse(res, 'Form field deactivated successfully', field);
     } catch (error) {

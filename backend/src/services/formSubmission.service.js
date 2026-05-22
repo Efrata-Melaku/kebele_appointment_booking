@@ -39,7 +39,10 @@ function mapValuesToApiShape(values, { includeInactiveFields = true } = {}) {
 /**
  * Create submission header + values inside a transaction.
  */
-async function createSubmission(tx, { serviceId, appointmentId, residentId, rows }) {
+async function createSubmission(
+  tx,
+  { serviceId, appointmentId, residentId, rows, fileMetaByFieldId = {} }
+) {
   const submission = await tx.serviceFormSubmission.create({
     data: {
       serviceId,
@@ -56,6 +59,27 @@ async function createSubmission(tx, { serviceId, appointmentId, residentId, rows
         value: r.value,
       })),
     });
+
+    const values = await tx.serviceFormSubmissionValue.findMany({
+      where: { submissionId: submission.id },
+      include: { formField: { select: { id: true, fieldType: true } } },
+    });
+
+    for (const v of values) {
+      if (v.formField.fieldType !== 'file') continue;
+      const meta = fileMetaByFieldId[v.formFieldId];
+      if (!meta?.fileUrl) continue;
+
+      await tx.uploadedFile.create({
+        data: {
+          appointmentId,
+          submissionValueId: v.id,
+          fileName: meta.fileName || fileNameFromUrl(meta.fileUrl),
+          fileUrl: meta.fileUrl,
+          fileType: meta.fileType || null,
+        },
+      });
+    }
   }
 
   return submission;
@@ -126,7 +150,14 @@ async function attachSubmissionsToMany(appointments, options = {}) {
   });
 }
 
-async function upsertSubmissionValues(tx, appointmentId, serviceId, residentId, rows) {
+async function upsertSubmissionValues(
+  tx,
+  appointmentId,
+  serviceId,
+  residentId,
+  rows,
+  fileMetaByFieldId = {}
+) {
   let submission = await tx.serviceFormSubmission.findUnique({
     where: { appointmentId },
   });
@@ -152,6 +183,48 @@ async function upsertSubmissionValues(tx, appointmentId, serviceId, residentId, 
       },
       update: { value: row.value },
     });
+  }
+
+  for (const row of rows) {
+    const meta = fileMetaByFieldId[row.formFieldId];
+    if (!meta?.fileUrl) continue;
+
+    const valueRow = await tx.serviceFormSubmissionValue.findUnique({
+      where: {
+        submissionId_formFieldId: {
+          submissionId: submission.id,
+          formFieldId: row.formFieldId,
+        },
+      },
+      include: { formField: { select: { fieldType: true } } },
+    });
+
+    if (!valueRow || valueRow.formField.fieldType !== 'file') continue;
+
+    const existing = await tx.uploadedFile.findUnique({
+      where: { submissionValueId: valueRow.id },
+    });
+
+    if (existing) {
+      await tx.uploadedFile.update({
+        where: { id: existing.id },
+        data: {
+          fileName: meta.fileName || existing.fileName,
+          fileUrl: meta.fileUrl,
+          fileType: meta.fileType || null,
+        },
+      });
+    } else {
+      await tx.uploadedFile.create({
+        data: {
+          appointmentId,
+          submissionValueId: valueRow.id,
+          fileName: meta.fileName || fileNameFromUrl(meta.fileUrl),
+          fileUrl: meta.fileUrl,
+          fileType: meta.fileType || null,
+        },
+      });
+    }
   }
 
   return submission;
@@ -191,6 +264,84 @@ async function loadResponsesForAppointment(appointmentId, options = {}) {
   return formResponses;
 }
 
+function fileNameFromUrl(url) {
+  if (!url) return '';
+  const parts = String(url).split('/');
+  return parts[parts.length - 1] || url;
+}
+
+/**
+ * Staff-facing shape: dynamic labels/types, separate uploadedFiles list.
+ */
+async function loadUploadedFilesForAppointment(appointmentId) {
+  return prisma.uploadedFile.findMany({
+    where: { appointmentId },
+    orderBy: { uploadedAt: 'asc' },
+    include: {
+      submissionValue: {
+        include: { formField: { select: { label: true } } },
+      },
+    },
+  });
+}
+
+function formatStaffFormPayload(formResponses, uploadedFileRows = []) {
+  const uploadedFiles = [];
+  const seenUrls = new Set();
+
+  for (const uf of uploadedFileRows) {
+    const label = uf.submissionValue?.formField?.label || 'Document';
+    if (!seenUrls.has(uf.fileUrl)) {
+      uploadedFiles.push({
+        id: uf.id,
+        fieldLabel: label,
+        fileUrl: uf.fileUrl,
+        fileName: uf.fileName,
+        fileType: uf.fileType,
+      });
+      seenUrls.add(uf.fileUrl);
+    }
+  }
+
+  const formatted = (formResponses || []).map((r) => {
+    const fieldType = r.field?.fieldType || 'text';
+    const fieldLabel = r.field?.label || 'Field';
+    const raw = r.value ?? '';
+    const display = r.displayValue ?? raw;
+
+    if (fieldType === 'file' && raw) {
+      const matched = uploadedFileRows.find((uf) => uf.submissionValue?.formFieldId === r.formFieldId);
+      const fileUrl = matched?.fileUrl || raw;
+      const fileName = matched?.fileName || fileNameFromUrl(fileUrl);
+      if (!seenUrls.has(fileUrl)) {
+        uploadedFiles.push({
+          id: matched?.id,
+          fieldLabel,
+          fileUrl,
+          fileName,
+          fileType: matched?.fileType || null,
+        });
+        seenUrls.add(fileUrl);
+      }
+      return {
+        fieldLabel,
+        fieldType: 'file',
+        value: fileName,
+        fileUrl,
+        fileName,
+      };
+    }
+
+    return {
+      fieldLabel,
+      fieldType,
+      value: display != null && display !== '' ? String(display) : '',
+    };
+  });
+
+  return { formResponses: formatted, uploadedFiles };
+}
+
 module.exports = {
   createSubmission,
   loadSubmissionByAppointmentId,
@@ -200,4 +351,7 @@ module.exports = {
   upsertSubmissionValues,
   searchByFieldValue,
   coerceDisplayValue,
+  loadUploadedFilesForAppointment,
+  formatStaffFormPayload,
+  fileNameFromUrl,
 };

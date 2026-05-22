@@ -124,7 +124,12 @@ class AppointmentService {
     return slotAvailability.getAvailableSlotsForServiceDate(serviceId, date);
   }
 
-  async createAppointment(appointmentData, documentUrl = null, formResponseRows = null) {
+  async createAppointment(
+    appointmentData,
+    documentUrl = null,
+    formResponseRows = null,
+    fileMetaByFieldId = {}
+  ) {
     const { fullName, phone, gender } = appointmentData;
     const { serviceId, slotDate, slotStart } = parseBookingSlot(appointmentData);
 
@@ -186,6 +191,7 @@ class AppointmentService {
               appointmentId: appointment.id,
               residentId: resident.id,
               rows: formResponseRows,
+              fileMetaByFieldId,
             });
           }
 
@@ -320,13 +326,119 @@ class AppointmentService {
     }, READ_TRANSACTION_OPTIONS);
   }
 
-  async updateAppointmentStatus(appointmentId, status) {
+  async assertStaffCanAccessAppointment(staffUserId, appointmentId) {
     const appointment = await prisma.appointment.findUnique({
       where: { id: appointmentId },
+      select: { id: true, serviceId: true },
     });
 
     if (!appointment) {
-      throw new Error('Appointment not found');
+      const err = new Error('Appointment not found');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+
+    const assignment = await prisma.staffServiceAssignment.findUnique({
+      where: {
+        staffUserId_serviceId: {
+          staffUserId,
+          serviceId: appointment.serviceId,
+        },
+      },
+    });
+
+    if (!assignment) {
+      const err = new Error('You are not authorized to access this appointment');
+      err.code = 'FORBIDDEN';
+      throw err;
+    }
+
+    return appointment;
+  }
+
+  async getStaffAppointmentDetail(staffUserId, appointmentId) {
+    await this.assertStaffCanAccessAppointment(staffUserId, appointmentId);
+
+    const apt = await prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: appointmentInclude,
+    });
+
+    const flat = withPublicNumber(attachTimeSlot(apt));
+    const { formResponses: rawResponses } = await formSubmissionService.loadSubmissionByAppointmentId(
+      appointmentId,
+      { includeInactiveFields: true }
+    );
+    const uploadedFileRows = await formSubmissionService.loadUploadedFilesForAppointment(appointmentId);
+    const { formResponses, uploadedFiles } = formSubmissionService.formatStaffFormPayload(
+      rawResponses,
+      uploadedFileRows
+    );
+
+    if (flat.documentUrl && !uploadedFiles.some((f) => f.fileUrl === flat.documentUrl)) {
+      const fileName = formSubmissionService.fileNameFromUrl(flat.documentUrl);
+      uploadedFiles.push({
+        fieldLabel: 'Appointment document',
+        fileUrl: flat.documentUrl,
+        fileName,
+      });
+    }
+
+    const resident = flat.resident
+      ? {
+          id: flat.resident.id,
+          fullName: flat.resident.fullName,
+          phone: flat.resident.phone,
+          gender: flat.resident.gender,
+          kebeleId: flat.resident.kebeleId ?? null,
+          houseNumber: flat.resident.houseNumber ?? null,
+          documentUrl: flat.resident.documentUrl ?? null,
+        }
+      : null;
+
+    const service = flat.service
+      ? {
+          id: flat.service.id,
+          name: flat.service.name,
+          description: flat.service.description,
+          department: flat.service.department
+            ? { id: flat.service.department.id, name: flat.service.department.name }
+            : null,
+        }
+      : null;
+
+    const appointment = {
+      id: flat.id,
+      appointmentNumber: flat.appointmentNumber,
+      status: flat.status,
+      slotDate: flat.slotDate,
+      slotStartTime: flat.slotStartTime,
+      slotEndTime: flat.slotEndTime,
+      timeSlot: flat.timeSlot,
+      documentUrl: flat.documentUrl,
+      createdAt: flat.createdAt,
+      updatedAt: flat.updatedAt,
+    };
+
+    return {
+      appointment,
+      resident,
+      service,
+      formResponses,
+      uploadedFiles,
+    };
+  }
+
+  async updateAppointmentStatus(appointmentId, status, staffUserId = null) {
+    if (staffUserId != null) {
+      await this.assertStaffCanAccessAppointment(staffUserId, appointmentId);
+    } else {
+      const appointment = await prisma.appointment.findUnique({
+        where: { id: appointmentId },
+      });
+      if (!appointment) {
+        throw new Error('Appointment not found');
+      }
     }
 
     const updated = await prisma.appointment.update({
@@ -429,7 +541,12 @@ class AppointmentService {
     throw new Error('Invalid appointment reference');
   }
 
-  async updateAppointmentFormResponses(appointmentId, { phone }, formResponseRows) {
+  async updateAppointmentFormResponses(
+    appointmentId,
+    { phone },
+    formResponseRows,
+    fileMetaByFieldId = {}
+  ) {
     return prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.findUnique({
         where: { id: appointmentId },
@@ -465,7 +582,8 @@ class AppointmentService {
           appointmentId,
           aptRow.serviceId,
           aptRow.group.residentId,
-          formResponseRows
+          formResponseRows,
+          fileMetaByFieldId
         );
       }
 
@@ -479,7 +597,12 @@ class AppointmentService {
     }, BOOKING_TRANSACTION_OPTIONS);
   }
 
-  async updateFormResponsesByRef(appointmentRef, { phone, appointmentItemId }, formResponseRows) {
+  async updateFormResponsesByRef(
+    appointmentRef,
+    { phone, appointmentItemId },
+    formResponseRows,
+    fileMetaByFieldId = {}
+  ) {
     if (isAppointmentNumberRef(appointmentRef)) {
       const group = await prisma.appointmentGroup.findUnique({
         where: { appointmentNumber: appointmentRef.trim() },
@@ -495,12 +618,12 @@ class AppointmentService {
         line = group.appointments.find((a) => a.id === Number(appointmentItemId));
       }
       if (!line) throw new Error('No editable appointment line found');
-      return this.updateAppointmentFormResponses(line.id, { phone }, formResponseRows);
+      return this.updateAppointmentFormResponses(line.id, { phone }, formResponseRows, fileMetaByFieldId);
     }
 
     const id = parseInt(appointmentRef, 10);
     if (!Number.isNaN(id)) {
-      return this.updateAppointmentFormResponses(id, { phone }, formResponseRows);
+      return this.updateAppointmentFormResponses(id, { phone }, formResponseRows, fileMetaByFieldId);
     }
     throw new Error('Invalid appointment reference');
   }

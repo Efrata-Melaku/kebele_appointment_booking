@@ -4,11 +4,11 @@ const app = require('./app');
 const env = require('./config/env');
 const prisma = require('./prisma/client');
 
-async function ensureUploadDirectories() {
+/** Optional temp folder only — production files live in Cloudinary */
+async function ensureTempUploadDirectory() {
   const root = path.isAbsolute(env.UPLOAD_PATH)
     ? env.UPLOAD_PATH
     : path.resolve(process.cwd(), env.UPLOAD_PATH);
-  await fs.mkdir(path.join(root, 'documents'), { recursive: true });
   await fs.mkdir(path.join(root, 'temp'), { recursive: true });
 }
 
@@ -19,7 +19,7 @@ async function startServer() {
       process.exit(1);
     }
 
-    await ensureUploadDirectories();
+    await ensureTempUploadDirectory();
 
     await prisma.$connect();
     console.log('Database connected successfully');

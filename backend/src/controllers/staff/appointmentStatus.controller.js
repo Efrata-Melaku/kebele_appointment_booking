@@ -1,16 +1,15 @@
-const prisma = require('../../prisma/client');
 const appointmentService = require('../../services/appointment.service');
 const { APPOINTMENT_STATUS } = require('../../config/constants');
 const { successResponse, errorResponse } = require('../../utils/response');
-const { attachTimeSlot } = require('../../utils/appointmentSlot');
 
-function flattenAppointment(apt) {
-  if (!apt) return apt;
-  return {
-    ...apt,
-    appointmentNumber: apt.group?.appointmentNumber,
-    resident: apt.group?.resident,
-  };
+function mapServiceError(res, error, fallbackMessage) {
+  if (error.code === 'NOT_FOUND' || error.message?.includes('not found')) {
+    return errorResponse(res, error.message || 'Appointment not found', 404);
+  }
+  if (error.code === 'FORBIDDEN') {
+    return errorResponse(res, error.message, 403);
+  }
+  return errorResponse(res, fallbackMessage, 500);
 }
 
 class AppointmentStatusController {
@@ -43,46 +42,27 @@ class AppointmentStatusController {
 
       const appointment = await appointmentService.updateAppointmentStatus(
         parseInt(id, 10),
-        prismaStatus
+        prismaStatus,
+        req.user.id
       );
 
       successResponse(res, 'Appointment status updated successfully', appointment);
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return errorResponse(res, error.message, 404);
-      }
-      errorResponse(res, 'Failed to update appointment status', 500);
+      return mapServiceError(res, error, 'Failed to update appointment status');
     }
   }
 
   async getAppointmentById(req, res) {
     try {
       const { id } = req.params;
-
-      const appointment = await prisma.appointment.findUnique({
-        where: { id: parseInt(id, 10) },
-        include: {
-          group: { include: { resident: true } },
-          service: {
-            include: {
-              department: true,
-            },
-          },
-          feedback: true,
-        },
-      });
-
-      if (!appointment) {
-        return errorResponse(res, 'Appointment not found', 404);
-      }
-
-      successResponse(
-        res,
-        'Appointment retrieved successfully',
-        attachTimeSlot(flattenAppointment(appointment))
+      const detail = await appointmentService.getStaffAppointmentDetail(
+        req.user.id,
+        parseInt(id, 10)
       );
+
+      successResponse(res, 'Appointment retrieved successfully', detail);
     } catch (error) {
-      errorResponse(res, 'Failed to retrieve appointment', 500);
+      return mapServiceError(res, error, 'Failed to retrieve appointment');
     }
   }
 }

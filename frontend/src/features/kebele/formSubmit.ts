@@ -1,16 +1,26 @@
 import type { ServiceFormFieldDef } from './formTypes';
 import { responseFieldId, responseFileFieldName, type ResponsesMap } from './formPaths';
+import type { UploadedFileMeta } from './uploadFile';
+
+function isUploadedMeta(val: unknown): val is UploadedFileMeta {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    'fileUrl' in val &&
+    typeof (val as UploadedFileMeta).fileUrl === 'string'
+  );
+}
 
 /**
  * Append booking dynamic fields to FormData.
- * Sends `responses` JSON + separate file parts as file_<id>.
+ * Pre-uploaded files are sent in `responses` JSON; new File objects are sent as file_<id> parts.
  */
 export function appendResponsesToFormData(
   fd: FormData,
   fields: ServiceFormFieldDef[],
   responses: ResponsesMap
 ) {
-  const payload: Record<string, string | number | boolean> = {};
+  const payload: Record<string, string | number | boolean | UploadedFileMeta> = {};
 
   for (const f of fields) {
     const id = responseFieldId(f.id);
@@ -19,8 +29,14 @@ export function appendResponsesToFormData(
     if (f.fieldType === 'file') {
       if (val instanceof File) {
         fd.append(responseFileFieldName(f.id), val);
+      } else if (isUploadedMeta(val)) {
+        payload[id] = {
+          fileUrl: val.fileUrl,
+          fileName: val.fileName,
+          fileType: val.fileType ?? null,
+        };
       } else if (typeof val === 'string' && val.length > 0) {
-        payload[id] = val;
+        payload[id] = { fileUrl: val, fileName: val.split('/').pop() || 'file', fileType: null };
       }
       continue;
     }
@@ -35,7 +51,6 @@ export function appendResponsesToFormData(
 
   const json = JSON.stringify(payload);
   fd.append('responses', json);
-  // Legacy alias for older backend handlers
   fd.append('dynamicFields', json);
 
   if (import.meta.env.DEV) {

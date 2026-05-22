@@ -5,10 +5,11 @@ const { successResponse, errorResponse } = require('../../utils/response');
 const { isAppointmentNumberRef } = require('../../utils/appointmentRef');
 const dynamicFormService = require('../../services/dynamicForm.service');
 const formResponseService = require('../../services/formResponse.service');
+const { parseDynamicFormPayload } = require('../../utils/parseDynamicFormPayload');
 const {
-  parseDynamicFormPayload,
-  collectFileUrlsByFieldId,
-} = require('../../utils/parseDynamicFormPayload');
+  processMultipartFiles,
+  mergePreuploadedFileMeta,
+} = require('../../utils/fileUpload.utils');
 
 class AppointmentController {
   async getAvailableSlots(req, res) {
@@ -48,13 +49,17 @@ class AppointmentController {
         appointmentData.serviceId = Number(appointmentData.serviceId);
       }
       let documentUrl = null;
+      let fileUrlsByFieldId = {};
+      let fileMetaByFieldId = {};
 
       const files = Array.isArray(req.files) ? req.files : [];
-      for (const f of files) {
-        if (f.fieldname === 'document') {
-          documentUrl = `/uploads/documents/${f.filename}`;
-          break;
-        }
+      try {
+        const processed = await processMultipartFiles(files);
+        documentUrl = processed.documentUrl;
+        fileUrlsByFieldId = processed.fileUrlsByFieldId;
+        fileMetaByFieldId = processed.fileMetaByFieldId;
+      } catch (uploadErr) {
+        return errorResponse(res, uploadErr.message || 'File upload failed', 400);
       }
 
       let dynamicValues = {};
@@ -64,7 +69,9 @@ class AppointmentController {
         return errorResponse(res, e.message || 'responses must be valid JSON', 400);
       }
 
-      const fileUrlsByFieldId = collectFileUrlsByFieldId(files);
+      const merged = mergePreuploadedFileMeta(dynamicValues, fileUrlsByFieldId, fileMetaByFieldId);
+      fileUrlsByFieldId = merged.fileUrlsByFieldId;
+      fileMetaByFieldId = merged.fileMetaByFieldId;
 
       let formResponseRows = null;
       try {
@@ -87,7 +94,8 @@ class AppointmentController {
       const appointment = await appointmentService.createAppointment(
         appointmentData,
         documentUrl,
-        formResponseRows
+        formResponseRows,
+        fileMetaByFieldId
       );
 
       try {
@@ -244,7 +252,9 @@ class AppointmentController {
 
       let documentUrl = null;
       if (req.file) {
-        documentUrl = `/uploads/documents/${req.file.filename}`;
+        const { processMultipartFiles: processFiles } = require('../../utils/fileUpload.utils');
+        const processed = await processFiles([req.file]);
+        documentUrl = processed.documentUrl;
       }
 
       const { phone, serviceId, slotDate, slotStart } = req.body;
@@ -288,7 +298,19 @@ class AppointmentController {
       }
 
       const files = Array.isArray(req.files) ? req.files : [];
-      const fileUrlsByFieldId = collectFileUrlsByFieldId(files);
+      let fileUrlsByFieldId = {};
+      let fileMetaByFieldId = {};
+      try {
+        const processed = await processMultipartFiles(files);
+        fileUrlsByFieldId = processed.fileUrlsByFieldId;
+        fileMetaByFieldId = processed.fileMetaByFieldId;
+      } catch (uploadErr) {
+        return errorResponse(res, uploadErr.message || 'File upload failed', 400);
+      }
+
+      const merged = mergePreuploadedFileMeta(dynamicValues, fileUrlsByFieldId, fileMetaByFieldId);
+      fileUrlsByFieldId = merged.fileUrlsByFieldId;
+      fileMetaByFieldId = merged.fileMetaByFieldId;
 
       let appointmentId;
       if (isAppointmentNumberRef(appointmentRef)) {
@@ -330,7 +352,8 @@ class AppointmentController {
           appointmentItemId:
             appointmentItemId != null ? parseInt(appointmentItemId, 10) : undefined,
         },
-        formResponseRows
+        formResponseRows,
+        fileMetaByFieldId
       );
 
       successResponse(res, 'Form responses updated successfully', updated);

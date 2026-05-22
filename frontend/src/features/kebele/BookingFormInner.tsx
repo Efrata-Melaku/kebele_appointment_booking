@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, type Path } from 'react-hook-form';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 
@@ -240,7 +240,7 @@ function BookingFormFields({
 
 
 
-  const { control, handleSubmit, register, watch, setValue, formState } = form;
+  const { control, handleSubmit, register, watch, setValue, setError, formState } = form;
 
   const { errors, isSubmitting } = formState;
 
@@ -296,8 +296,25 @@ function BookingFormFields({
 
     }
 
-    await onSubmitBooking(fd);
-
+    try {
+      await onSubmitBooking(fd);
+    } catch (e) {
+      const err = e as Error & {
+        details?: { fieldId: number; message: string }[];
+        response?: { data?: { details?: { fieldId: number; message: string }[] } };
+      };
+      const details = err.details ?? err.response?.data?.details;
+      if (Array.isArray(details) && details.length) {
+        for (const d of details) {
+          setError(`responses.${d.fieldId}` as Path<BookingFormValues>, {
+            type: 'server',
+            message: d.message,
+          });
+        }
+        return;
+      }
+      throw e;
+    }
   }
 
 
@@ -607,7 +624,14 @@ function BookingFormFields({
 
         >
 
-          {isSubmitting ? 'Booking…' : 'Confirm booking'}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Booking…
+            </>
+          ) : (
+            'Confirm booking'
+          )}
 
         </Button>
 

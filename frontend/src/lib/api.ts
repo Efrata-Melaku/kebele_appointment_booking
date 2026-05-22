@@ -3,6 +3,14 @@ import { getToken } from './auth';
 // const baseUrl = () => import.meta.env.VITE_API_URL || '';
 const baseUrl = () => 'http://localhost:5000';
 
+/** Resolve stored upload paths (e.g. /uploads/documents/…) to absolute URLs. */
+export function resolveUploadUrl(path: string | null | undefined): string {
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = baseUrl().replace(/\/$/, '');
+  return path.startsWith('/') ? `${base}${path}` : `${base}/${path}`;
+}
+
 export type ApiEnvelope<T = unknown> = {
   success: boolean;
   message?: string;

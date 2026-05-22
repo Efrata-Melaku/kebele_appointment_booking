@@ -6,6 +6,7 @@ const {
   createServiceSchema,
   replaceServiceFormFieldsSchema,
   createFormFieldSchema,
+  updateFormFieldSchema,
 } = require('../../utils/validators');
 
 const router = express.Router();
@@ -23,6 +24,14 @@ router.post(
   validate(createFormFieldSchema),
   serviceFormFieldController.createFormField
 );
+
+router.put(
+  '/:id/form-fields/:fieldId',
+  validate(updateFormFieldSchema),
+  serviceFormFieldController.updateFormFieldForService
+);
+
+router.delete('/:id/form-fields/:fieldId', serviceFormFieldController.deleteFormFieldForService);
 
 router.post(
   '/:id/fields',

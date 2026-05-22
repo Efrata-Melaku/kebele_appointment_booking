@@ -73,10 +73,19 @@ function validateResponsesWithDefinitions(fieldRows, values, fileUrlsByFieldId =
     const fileUrl = fileUrlsByFieldId[field.id];
 
     if (field.fieldType === 'file') {
-      if (field.required && !fileUrl) {
+      let resolvedUrl = fileUrlsByFieldId[field.id];
+      if (!resolvedUrl && raw != null) {
+        if (typeof raw === 'string' && /^https?:\/\//i.test(raw.trim())) {
+          resolvedUrl = raw.trim();
+        } else if (typeof raw === 'object' && raw.fileUrl) {
+          resolvedUrl = String(raw.fileUrl).trim();
+        }
+      }
+
+      if (field.required && !resolvedUrl) {
         errors.push({ fieldId: field.id, label: field.label, message: 'File is required' });
-      } else if (fileUrl) {
-        rows.push({ formFieldId: field.id, value: fileUrl });
+      } else if (resolvedUrl) {
+        rows.push({ formFieldId: field.id, value: resolvedUrl });
       }
       continue;
     }
@@ -165,10 +174,22 @@ async function validateUpdateResponseRows(
   const fieldRows = await loadActiveFormFieldDefinitions(serviceId);
   const mergedFiles = { ...fileUrlsByFieldId };
   for (const field of fieldRows) {
-    if (field.fieldType === 'file' && !mergedFiles[field.id]) {
-      const prev = existingByFieldId[field.id];
-      if (prev) mergedFiles[field.id] = prev;
+    if (field.fieldType !== 'file') continue;
+    if (mergedFiles[field.id]) continue;
+
+    const key = String(field.id);
+    const raw = values[key];
+    if (typeof raw === 'string' && /^https?:\/\//i.test(raw.trim())) {
+      mergedFiles[field.id] = raw.trim();
+      continue;
     }
+    if (raw && typeof raw === 'object' && raw.fileUrl) {
+      mergedFiles[field.id] = String(raw.fileUrl).trim();
+      continue;
+    }
+
+    const prev = existingByFieldId[field.id];
+    if (prev) mergedFiles[field.id] = prev;
   }
   return validateResponsesWithDefinitions(fieldRows, values, mergedFiles);
 }

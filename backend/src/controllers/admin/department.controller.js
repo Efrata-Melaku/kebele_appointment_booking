@@ -92,16 +92,32 @@ class DepartmentController {
     try {
       const { id } = req.params;
       const { name } = req.body;
+      const trimmedName = String(name).trim();
+      const deptId = parseInt(id, 10);
+
+      const existingDepartment = await prisma.department.findFirst({
+        where: {
+          name: trimmedName,
+          NOT: { id: deptId },
+        },
+      });
+
+      if (existingDepartment) {
+        return errorResponse(res, 'Department already exists', 400);
+      }
 
       const department = await prisma.department.update({
-        where: { id: parseInt(id) },
-        data: { name },
+        where: { id: deptId },
+        data: { name: trimmedName },
       });
 
       successResponse(res, 'Department updated successfully', department);
     } catch (error) {
       if (error.code === 'P2025') {
         return errorResponse(res, 'Department not found', 404);
+      }
+      if (error.code === 'P2002') {
+        return errorResponse(res, 'Department already exists', 400);
       }
       errorResponse(res, 'Failed to update department', 500);
     }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Controller,
   type Control,
@@ -5,6 +6,7 @@ import {
   type FieldValues,
   type Path,
 } from 'react-hook-form';
+import { Loader2 } from 'lucide-react';
 import { Input } from '../../app/components/ui/input';
 import { Label } from '../../app/components/ui/label';
 import { Checkbox } from '../../app/components/ui/checkbox';
@@ -19,6 +21,8 @@ import {
 } from '../../app/components/ui/select';
 import { parseFieldOptions, type ServiceFormFieldDef } from './formTypes';
 import { responseFieldPath } from './formPaths';
+import { uploadFileToCloudinary, type UploadedFileMeta } from './uploadFile';
+import { resolveUploadUrl } from '../../lib/api';
 
 function getResponseError(errors: FieldErrors, fieldId: number): string | undefined {
   const responses = errors.responses;
@@ -202,25 +206,12 @@ export function DynamicFormFields<T extends FieldValues>({
                 name={name}
                 control={control}
                 render={({ field }) => (
-                  <div className="mt-1 space-y-1">
-                    {typeof field.value === 'string' && field.value ? (
-                      <p className="truncate text-xs text-muted-foreground">
-                        Current:{' '}
-                        <a href={field.value} target="_blank" rel="noreferrer" className="underline">
-                          {field.value.split('/').pop()}
-                        </a>
-                      </p>
-                    ) : null}
-                    <Input
-                      type="file"
-                      disabled={disabled}
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        field.onChange(file ?? (typeof field.value === 'string' ? field.value : undefined));
-                      }}
-                      onBlur={field.onBlur}
-                    />
-                  </div>
+                  <FileFieldInput
+                    value={field.value}
+                    disabled={disabled}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                  />
                 )}
               />
             )}
@@ -229,6 +220,88 @@ export function DynamicFormFields<T extends FieldValues>({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function fileMetaFromValue(value: unknown): UploadedFileMeta | null {
+  if (typeof value === 'object' && value !== null && 'fileUrl' in value) {
+    const v = value as UploadedFileMeta;
+    return v.fileUrl ? v : null;
+  }
+  if (typeof value === 'string' && value.length > 0) {
+    return { fileUrl: value, fileName: value.split('/').pop() || 'file', fileType: null };
+  }
+  return null;
+}
+
+function FileFieldInput({
+  value,
+  disabled,
+  onChange,
+  onBlur,
+}: {
+  value: unknown;
+  disabled?: boolean;
+  onChange: (v: UploadedFileMeta | '' | undefined) => void;
+  onBlur: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState('');
+  const meta = fileMetaFromValue(value);
+
+  async function handleFileSelect(file: File | undefined) {
+    setUploadErr('');
+    if (!file) {
+      onChange(meta ?? '');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const uploaded = await uploadFileToCloudinary(file);
+      onChange(uploaded);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Upload failed';
+      setUploadErr(
+        msg.includes('503') || msg.toLowerCase().includes('cloudinary') || msg.toLowerCase().includes('not configured')
+          ? 'File upload is not set up on the server. Ask the administrator to configure Cloudinary in backend/.env.'
+          : msg
+      );
+      onChange(undefined);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="mt-1 space-y-1">
+      {meta ? (
+        <p className="truncate text-xs text-muted-foreground">
+          Uploaded:{' '}
+          <a
+            href={resolveUploadUrl(meta.fileUrl)}
+            target="_blank"
+            rel="noreferrer"
+            className="underline"
+          >
+            {meta.fileName}
+          </a>
+        </p>
+      ) : null}
+      <div className="flex items-center gap-2">
+        <Input
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+          disabled={disabled || uploading}
+          onChange={(e) => {
+            void handleFileSelect(e.target.files?.[0]);
+          }}
+          onBlur={onBlur}
+        />
+        {uploading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+      </div>
+      {uploadErr ? <p className="text-sm text-destructive">{uploadErr}</p> : null}
     </div>
   );
 }

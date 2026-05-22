@@ -241,6 +241,10 @@ export function ServicesManagement() {
   }
 
   async function onDeptSubmit(values: DeptForm) {
+    if (deptDupMsg) {
+      deptForm.setError('name', { type: 'manual', message: deptDupMsg });
+      return;
+    }
     setDeptSuccess('');
     try {
       const r = await http.post<ApiEnvelope<Department>>('/api/admin/departments', {
@@ -261,6 +265,10 @@ export function ServicesManagement() {
   }
 
   async function onServiceStep1(values: ServiceStep1) {
+    if (svcDupMsg) {
+      svcForm.setError('name', { type: 'manual', message: svcDupMsg });
+      return;
+    }
     setSvcSuccess('');
     try {
       const r = await http.post<ApiEnvelope<ServiceRow>>('/api/admin/services', {

@@ -11,6 +11,7 @@ import { Feedback } from "./components/admin/Feedback";
 import { Reports } from "./components/admin/Reports";
 import { Settings } from "./components/admin/Settings";
 import { StaffDashboard } from "./components/staff/StaffDashboard";
+import { StaffAppointmentDetails } from "./components/staff/StaffAppointmentDetails";
 import { UserDashboard } from "./components/user/UserDashboard";
 import { ServiceCatalog } from "./components/user/ServiceCatalog";
 import { ServiceBooking } from "./components/user/ServiceBooking";
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
     Component: DashboardLayout,
     children: [
       { index: true, Component: StaffDashboard },
+      { path: "appointments/:id", Component: StaffAppointmentDetails },
     ],
   },
   {

@@ -2,39 +2,39 @@ const multer = require('multer');
 const path = require('path');
 const env = require('./env');
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(env.UPLOAD_PATH, 'documents'));
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+/** Allowed extensions for resident document uploads */
+const ALLOWED_EXTENSIONS = new Set(['.pdf', '.jpg', '.jpeg', '.png']);
+const ALLOWED_MIMETYPES = new Set([
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+]);
 
 const fileFilter = (req, file, cb) => {
-  // Accept images and documents
-  const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const mimeOk = ALLOWED_MIMETYPES.has((file.mimetype || '').toLowerCase());
+  const extOk = ALLOWED_EXTENSIONS.has(ext);
 
-  if (mimetype && extname) {
+  if (mimeOk && extOk) {
     return cb(null, true);
-  } else {
-    cb(new Error('Invalid file type. Only images and documents are allowed.'));
   }
+  cb(new Error('Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.'));
 };
 
+/** Memory storage — files are uploaded to Cloudinary, not saved under uploads/ */
+const memoryStorage = multer.memoryStorage();
+
 const upload = multer({
-  storage: storage,
+  storage: memoryStorage,
   limits: {
     fileSize: env.MAX_FILE_SIZE,
   },
-  fileFilter: fileFilter,
+  fileFilter,
 });
 
 const uploadDynamic = multer({
-  storage,
+  storage: memoryStorage,
   limits: {
     fileSize: env.MAX_FILE_SIZE,
     files: 30,

@@ -21,6 +21,7 @@ function parseDynamicFormPayload(body) {
   return {};
 }
 
+/** @deprecated use fileUpload.utils processMultipartFiles — kept for imports that expect sync helper */
 function collectFileUrlsByFieldId(files) {
   const fileUrlsByFieldId = {};
   const list = Array.isArray(files) ? files : [];
@@ -28,8 +29,8 @@ function collectFileUrlsByFieldId(files) {
   for (const f of list) {
     let m = /^file_(\d+)$/.exec(f.fieldname);
     if (!m) m = /^df_(\d+)$/.exec(f.fieldname);
-    if (m) {
-      fileUrlsByFieldId[parseInt(m[1], 10)] = `/uploads/documents/${f.filename}`;
+    if (m && f.cloudinaryUrl) {
+      fileUrlsByFieldId[parseInt(m[1], 10)] = f.cloudinaryUrl;
     }
   }
 
