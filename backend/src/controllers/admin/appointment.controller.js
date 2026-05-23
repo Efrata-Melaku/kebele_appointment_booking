@@ -1,10 +1,10 @@
-const adminAppointmentService = require('../../services/adminAppointment.service');
+const appointmentService = require('../../services/appointment.service');
 const { successResponse, errorResponse } = require('../../utils/response');
 
 class AdminAppointmentController {
   async getStats(req, res) {
     try {
-      const stats = await adminAppointmentService.getStats();
+      const stats = await appointmentService.getAdminStats();
       successResponse(res, 'Appointment statistics retrieved successfully', stats);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve appointment statistics', 500);
@@ -13,7 +13,7 @@ class AdminAppointmentController {
 
   async listAppointments(req, res) {
     try {
-      const result = await adminAppointmentService.listAppointments(req.query);
+      const result = await appointmentService.listAdminAppointments(req.query);
       successResponse(res, 'Appointments retrieved successfully', result);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve appointments', 500);
@@ -22,7 +22,7 @@ class AdminAppointmentController {
 
   async getAppointmentDetail(req, res) {
     try {
-      const detail = await adminAppointmentService.getAppointmentDetail(req.params.id);
+      const detail = await appointmentService.getAdminAppointmentDetail(req.params.id);
       successResponse(res, 'Appointment retrieved successfully', detail);
     } catch (error) {
       if (error.statusCode === 404) {

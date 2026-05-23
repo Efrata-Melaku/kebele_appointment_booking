@@ -9,6 +9,8 @@ type SlotPreview = {
   end: string;
   available: boolean;
   remainingCapacity: number;
+  bookedCount: number;
+  maxCapacity: number;
 };
 
 /** Slots are computed dynamically from staff count, service duration, and schedule templates. */
@@ -128,8 +130,10 @@ export function AppointmentLimits() {
               <tr>
                 <th className="px-4 py-2">Start</th>
                 <th className="px-4 py-2">End</th>
-                <th className="px-4 py-2">Available</th>
+                <th className="px-4 py-2">Booked</th>
+                <th className="px-4 py-2">Capacity</th>
                 <th className="px-4 py-2">Remaining</th>
+                <th className="px-4 py-2">Available</th>
               </tr>
             </thead>
             <tbody>
@@ -137,8 +141,10 @@ export function AppointmentLimits() {
                 <tr key={s.start} className="border-t">
                   <td className="px-4 py-2">{s.start}</td>
                   <td className="px-4 py-2">{s.end}</td>
-                  <td className="px-4 py-2">{s.available ? 'Yes' : 'No'}</td>
+                  <td className="px-4 py-2">{s.bookedCount}</td>
+                  <td className="px-4 py-2">{s.maxCapacity}</td>
                   <td className="px-4 py-2">{s.remainingCapacity}</td>
+                  <td className="px-4 py-2">{s.available ? 'Yes' : 'No'}</td>
                 </tr>
               ))}
             </tbody>

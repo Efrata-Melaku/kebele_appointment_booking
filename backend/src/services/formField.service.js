@@ -1,4 +1,6 @@
-const prisma = require('../prisma/client');
+const serviceModel = require('../models/service.model');
+const serviceFormFieldModel = require('../models/serviceFormField.model');
+const { runTransaction } = require('../models/_client');
 const { assertValidFieldType, parseOptions } = require('./dynamicForm.service');
 
 function normalizeOptionsInput(options) {
@@ -15,7 +17,7 @@ function normalizeOptionsInput(options) {
 }
 
 async function assertServiceExists(serviceId) {
-  const service = await prisma.service.findUnique({ where: { id: serviceId } });
+  const service = await serviceModel.findServiceById(serviceId);
   if (!service) {
     const err = new Error('Service not found');
     err.statusCode = 404;
@@ -26,7 +28,7 @@ async function assertServiceExists(serviceId) {
 
 async function assertUniqueLabel(serviceId, label, excludeFieldId = null) {
   const normalized = String(label).trim().toLowerCase();
-  const fields = await prisma.serviceFormField.findMany({
+  const fields = await serviceFormFieldModel.findManyFormFields({
     where: {
       serviceId,
       isActive: true,
@@ -66,15 +68,12 @@ function validateFieldPayload(payload, { isUpdate = false } = {}) {
 }
 
 async function getNextOrder(serviceId) {
-  const max = await prisma.serviceFormField.aggregate({
-    where: { serviceId },
-    _max: { order: true },
-  });
+  const max = await serviceFormFieldModel.aggregateMaxOrder(serviceId);
   return (max._max.order ?? -1) + 1;
 }
 
 async function listFieldsForService(serviceId, { activeOnly = false } = {}) {
-  return prisma.serviceFormField.findMany({
+  return serviceFormFieldModel.findManyFormFields({
     where: {
       serviceId,
       ...(activeOnly ? { isActive: true } : {}),
@@ -91,22 +90,20 @@ async function createField(serviceId, payload) {
   const order =
     typeof payload.order === 'number' ? payload.order : await getNextOrder(serviceId);
 
-  return prisma.serviceFormField.create({
-    data: {
-      serviceId,
-      label: String(payload.label).trim(),
-      fieldType: payload.fieldType,
-      placeholder: payload.placeholder != null ? String(payload.placeholder) : null,
-      required: Boolean(payload.required),
-      options: normalizeOptionsInput(payload.options),
-      order,
-      isActive: true,
-    },
+  return serviceFormFieldModel.createFormField({
+    serviceId,
+    label: String(payload.label).trim(),
+    fieldType: payload.fieldType,
+    placeholder: payload.placeholder != null ? String(payload.placeholder) : null,
+    required: Boolean(payload.required),
+    options: normalizeOptionsInput(payload.options),
+    order,
+    isActive: true,
   });
 }
 
 async function updateField(fieldId, payload) {
-  const existing = await prisma.serviceFormField.findUnique({ where: { id: fieldId } });
+  const existing = await serviceFormFieldModel.findFormFieldById(fieldId);
   if (!existing) {
     throw Object.assign(new Error('Form field not found'), { statusCode: 404 });
   }
@@ -139,34 +136,28 @@ async function updateField(fieldId, payload) {
     }
   }
 
-  return prisma.serviceFormField.update({
-    where: { id: fieldId },
-    data: {
-      ...(payload.label !== undefined ? { label: String(payload.label).trim() } : {}),
-      ...(payload.fieldType !== undefined ? { fieldType: payload.fieldType } : {}),
-      ...(payload.placeholder !== undefined
-        ? { placeholder: payload.placeholder != null ? String(payload.placeholder) : null }
-        : {}),
-      ...(payload.required !== undefined ? { required: Boolean(payload.required) } : {}),
-      ...(payload.options !== undefined
-        ? { options: normalizeOptionsInput(payload.options) }
-        : {}),
-      ...(payload.order !== undefined ? { order: Number(payload.order) } : {}),
-      ...(payload.isActive !== undefined ? { isActive: Boolean(payload.isActive) } : {}),
-    },
+  return serviceFormFieldModel.updateFormField(fieldId, {
+    ...(payload.label !== undefined ? { label: String(payload.label).trim() } : {}),
+    ...(payload.fieldType !== undefined ? { fieldType: payload.fieldType } : {}),
+    ...(payload.placeholder !== undefined
+      ? { placeholder: payload.placeholder != null ? String(payload.placeholder) : null }
+      : {}),
+    ...(payload.required !== undefined ? { required: Boolean(payload.required) } : {}),
+    ...(payload.options !== undefined
+      ? { options: normalizeOptionsInput(payload.options) }
+      : {}),
+    ...(payload.order !== undefined ? { order: Number(payload.order) } : {}),
+    ...(payload.isActive !== undefined ? { isActive: Boolean(payload.isActive) } : {}),
   });
 }
 
 /** Soft delete — preserves historical appointment responses */
 async function deactivateField(fieldId) {
-  const existing = await prisma.serviceFormField.findUnique({ where: { id: fieldId } });
+  const existing = await serviceFormFieldModel.findFormFieldById(fieldId);
   if (!existing) {
     throw Object.assign(new Error('Form field not found'), { statusCode: 404 });
   }
-  return prisma.serviceFormField.update({
-    where: { id: fieldId },
-    data: { isActive: false },
-  });
+  return serviceFormFieldModel.updateFormField(fieldId, { isActive: false });
 }
 
 async function reorderFields(serviceId, orderedIds) {
@@ -175,7 +166,7 @@ async function reorderFields(serviceId, orderedIds) {
     throw Object.assign(new Error('orderedIds must be a non-empty array'), { statusCode: 400 });
   }
 
-  const fields = await prisma.serviceFormField.findMany({
+  const fields = await serviceFormFieldModel.findManyFormFields({
     where: { serviceId },
     select: { id: true },
   });
@@ -188,14 +179,41 @@ async function reorderFields(serviceId, orderedIds) {
     }
   }
 
-  await prisma.$transaction(
-    orderedIds.map((id, index) =>
-      prisma.serviceFormField.update({
-        where: { id: Number(id) },
-        data: { order: index },
-      })
-    )
-  );
+  await runTransaction(async (tx) => {
+    for (let index = 0; index < orderedIds.length; index += 1) {
+      await serviceFormFieldModel.updateFormField(Number(orderedIds[index]), { order: index }, tx);
+    }
+  });
+
+  return listFieldsForService(serviceId);
+}
+
+async function replaceFormFieldsForService(serviceId, fields) {
+  await assertServiceExists(serviceId);
+
+  await runTransaction(async (tx) => {
+    await serviceFormFieldModel.updateManyFormFields(
+      { serviceId: Number(serviceId) },
+      { isActive: false },
+      tx
+    );
+    for (let i = 0; i < fields.length; i += 1) {
+      const f = fields[i];
+      await serviceFormFieldModel.createFormField(
+        {
+          serviceId: Number(serviceId),
+          label: String(f.label).trim(),
+          fieldType: f.fieldType,
+          placeholder: f.placeholder != null ? String(f.placeholder) : null,
+          required: Boolean(f.required),
+          options: normalizeOptionsInput(f.options),
+          order: typeof f.order === 'number' ? f.order : i,
+          isActive: true,
+        },
+        tx
+      );
+    }
+  });
 
   return listFieldsForService(serviceId);
 }
@@ -206,5 +224,6 @@ module.exports = {
   updateField,
   deactivateField,
   reorderFields,
+  replaceFormFieldsForService,
   normalizeOptionsInput,
 };

@@ -12,7 +12,7 @@ class TimeSlotController {
         return errorResponse(res, 'serviceId and date query parameters are required', 400);
       }
 
-      const slots = await slotAvailability.getAvailableSlotsForServiceDate(serviceId, date);
+      const slots = await slotAvailability.getAvailableSlotsForAdmin(serviceId, date);
       successResponse(res, 'Slots preview retrieved successfully', slots);
     } catch (error) {
       errorResponse(res, error.message || 'Failed to preview slots', 400);

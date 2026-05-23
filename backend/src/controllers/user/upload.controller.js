@@ -1,5 +1,5 @@
 const { successResponse, errorResponse } = require('../../utils/response');
-const cloudinaryService = require('../../services/cloudinary.service');
+const uploadService = require('../../services/upload.service');
 
 class UploadController {
   /** POST /api/user/upload — upload a single document to Cloudinary */
@@ -9,7 +9,7 @@ class UploadController {
         return errorResponse(res, 'No file provided', 400);
       }
 
-      const uploaded = await cloudinaryService.uploadMulterFile(req.file);
+      const uploaded = await uploadService.uploadDocument(req.file);
       successResponse(res, 'File uploaded successfully', uploaded, 201);
     } catch (error) {
       if (error.message && error.message.includes('Cloudinary is not configured')) {

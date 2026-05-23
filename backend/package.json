@@ -11,7 +11,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "node prisma/seed.js"
+    "prisma:seed": "node prisma/seed.js",
+    "reminders": "node scripts/send-reminders.js"
   },
   "keywords": [
     "kebele",
@@ -29,6 +30,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
+    "africastalking": "^0.7.9",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.10.0",
     "cors": "^2.8.6",

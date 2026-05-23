@@ -5,7 +5,7 @@ const slotAvailability = require('./slotAvailability.service');
  */
 class SlotGeneratorService {
   async getAvailableSlots(serviceId, date) {
-    return slotAvailability.getAvailableSlotsForServiceDate(serviceId, date);
+    return slotAvailability.getAvailableSlotsForResidents(serviceId, date);
   }
 }
 

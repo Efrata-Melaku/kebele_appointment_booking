@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Clock, Users, ArrowRight, AlertCircle } from 'lucide-react';
+import { Clock, ArrowRight, AlertCircle } from 'lucide-react';
 import { http } from '../../../lib/http';
 import { getServiceIcon } from '../../../features/kebele/serviceIcons';
 import { Skeleton } from '../ui/skeleton';
@@ -11,7 +11,6 @@ export type CatalogService = {
   name: string;
   description: string | null;
   durationInMinutes: number;
-  staffCount: number;
   departmentName: string | null;
   activeFieldCount: number;
   bookable: boolean;
@@ -95,10 +94,6 @@ export function ServiceCatalog() {
                   <span className="inline-flex items-center gap-1">
                     <Clock className="h-3.5 w-3.5" />
                     {svc.durationInMinutes} min
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <Users className="h-3.5 w-3.5" />
-                    {svc.staffCount} staff
                   </span>
                 </div>
                 {svc.bookable && (

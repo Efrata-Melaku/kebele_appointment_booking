@@ -1,4 +1,3 @@
-const prisma = require('../../prisma/client');
 const appointmentService = require('../../services/appointment.service');
 const smsService = require('../../services/sms.service');
 const { successResponse, errorResponse } = require('../../utils/response');
@@ -99,19 +98,25 @@ class AppointmentController {
         fileMetaByFieldId
       );
 
+      let smsResult = { success: true, message: 'SMS sent successfully' };
       try {
-        await smsService.sendAppointmentConfirmation(
-          appointment.resident.phone,
-          appointment.appointmentNumber,
-          appointment.service?.name,
-          appointment.timeSlot.date,
-          appointment.timeSlot.startTime
-        );
+        smsResult = await smsService.sendAppointmentConfirmation({
+          phone: appointment.resident?.phone,
+          appointmentNumber: appointment.appointmentNumber,
+          serviceName: appointment.service?.name,
+          date: appointment.timeSlot?.date ?? appointment.slotDate,
+          time: appointment.timeSlot?.startTime ?? appointment.slotStartTime,
+        });
       } catch (smsError) {
-        console.error('SMS sending failed:', smsError);
+        console.error('[sms] Confirmation failed:', smsError);
+        smsResult = { success: false, message: 'SMS failed' };
       }
 
-      successResponse(res, 'Appointment created successfully', appointment, 201);
+      const responseMessage = smsResult.success
+        ? 'Appointment created successfully'
+        : 'Appointment created successfully. SMS delivery failed.';
+
+      successResponse(res, responseMessage, { ...appointment, sms: smsResult }, 201);
     } catch (error) {
       if (
         error.message.includes('not available') ||
@@ -144,15 +149,7 @@ class AppointmentController {
         return successResponse(res, 'Appointment retrieved successfully', data);
       }
 
-      const resident = await prisma.resident.findUnique({
-        where: { phone },
-      });
-
-      if (!resident) {
-        return successResponse(res, 'No appointments found', []);
-      }
-
-      const appointments = await appointmentService.getUserAppointments(resident.id);
+      const appointments = await appointmentService.getUserAppointmentsByPhone(phone);
 
       successResponse(res, 'Appointments retrieved successfully', appointments);
     } catch (error) {
@@ -200,15 +197,15 @@ class AppointmentController {
           }
         );
         try {
-          await smsService.sendAppointmentUpdate(
-            appointment.resident?.phone || phone,
-            appointment.appointmentNumber,
-            appointment.service?.name,
-            appointment.timeSlot?.date,
-            appointment.timeSlot?.startTime
-          );
+          await smsService.sendAppointmentReschedule({
+            phone: appointment.resident?.phone || phone,
+            appointmentNumber: appointment.appointmentNumber,
+            serviceName: appointment.service?.name,
+            date: appointment.timeSlot?.date ?? appointment.slotDate,
+            time: appointment.timeSlot?.startTime ?? appointment.slotStartTime,
+          });
         } catch (smsError) {
-          console.error('SMS sending failed:', smsError);
+          console.error('[sms] Reschedule notification failed:', smsError);
         }
         return successResponse(res, 'Appointment rescheduled successfully', appointment);
       }
@@ -223,15 +220,15 @@ class AppointmentController {
       );
 
       try {
-        await smsService.sendAppointmentUpdate(
-          appointment.resident?.phone || phone,
-          appointment.appointmentNumber,
-          appointment.service?.name,
-          appointment.timeSlot?.date,
-          appointment.timeSlot?.startTime
-        );
+        await smsService.sendAppointmentReschedule({
+          phone: appointment.resident?.phone || phone,
+          appointmentNumber: appointment.appointmentNumber,
+          serviceName: appointment.service?.name,
+          date: appointment.timeSlot?.date ?? appointment.slotDate,
+          time: appointment.timeSlot?.startTime ?? appointment.slotStartTime,
+        });
       } catch (smsError) {
-        console.error('SMS sending failed:', smsError);
+        console.error('[sms] Reschedule notification failed:', smsError);
       }
 
       successResponse(res, 'Appointment rescheduled successfully', appointment);
@@ -265,13 +262,10 @@ class AppointmentController {
 
       if (isAppointmentNumberRef(appointmentRef)) {
         if (appointmentItemId != null && appointmentItemId !== '') {
-          const apt = await prisma.appointment.findFirst({
-            where: {
-              id: parseInt(String(appointmentItemId), 10),
-              group: { appointmentNumber: appointmentRef.trim() },
-            },
-            include: { service: true, group: { include: { resident: true } } },
-          });
+          const apt = await appointmentService.getAppointmentLineByNumberAndItem(
+            appointmentRef.trim(),
+            parseInt(String(appointmentItemId), 10)
+          );
           if (apt) {
             const mapped = attachTimeSlot(apt);
             cancelledAppointment = {
@@ -291,10 +285,7 @@ class AppointmentController {
         );
       } else {
         const id = parseInt(appointmentRef, 10);
-        const apt = await prisma.appointment.findUnique({
-          where: { id },
-          include: { service: true, group: { include: { resident: true } } },
-        });
+        const apt = await appointmentService.getAppointmentByIdWithGroup(id);
         if (apt) {
           cancelledAppointment = {
             appointmentNumber: apt.group.appointmentNumber,
@@ -311,15 +302,13 @@ class AppointmentController {
 
       if (cancelledAppointment) {
         try {
-          await smsService.sendAppointmentCancellation(
-            cancelledAppointment.resident?.phone || phone,
-            cancelledAppointment.appointmentNumber,
-            cancelledAppointment.service?.name,
-            cancelledAppointment.timeSlot?.date,
-            cancelledAppointment.timeSlot?.startTime
-          );
+          await smsService.sendAppointmentCancellation({
+            phone: cancelledAppointment.resident?.phone || phone,
+            appointmentNumber: cancelledAppointment.appointmentNumber,
+            serviceName: cancelledAppointment.service?.name,
+          });
         } catch (smsError) {
-          console.error('SMS sending failed:', smsError);
+          console.error('[sms] Cancellation notification failed:', smsError);
         }
       }
 
@@ -425,10 +414,7 @@ class AppointmentController {
         appointmentId = parseInt(appointmentRef, 10);
       }
 
-      const apt = await prisma.appointment.findUnique({
-        where: { id: appointmentId },
-        select: { id: true, serviceId: true },
-      });
+      const apt = await appointmentService.getAppointmentServiceId(appointmentId);
       if (!apt) return errorResponse(res, 'Appointment not found', 404);
 
       const existing = await formResponseService.loadResponsesForAppointment(appointmentId);

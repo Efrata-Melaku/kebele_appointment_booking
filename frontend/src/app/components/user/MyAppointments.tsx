@@ -38,7 +38,7 @@ export function MyAppointments() {
   const [selected, setSelected] = useState<Apt | null>(null);
 
   const [resSlots, setResSlots] = useState<
-    { start: string; end: string; available: boolean; remainingCapacity: number }[]
+    { id: number; startTime: string; endTime: string; start?: string; end?: string }[]
   >([]);
   const [resDate, setResDate] = useState('');
   const [resSlotStart, setResSlotStart] = useState('');
@@ -149,7 +149,7 @@ export function MyAppointments() {
     setResBusy(true);
     try {
       const slots = await apiJson<
-        { start: string; end: string; available: boolean; remainingCapacity: number }[]
+        { id: number; startTime: string; endTime: string; start?: string; end?: string }[]
       >(
         `/api/user/appointments/available-slots?serviceId=${serviceId}&date=${encodeURIComponent(dateISO)}`,
         { skipAuth: true }
@@ -568,13 +568,15 @@ export function MyAppointments() {
                 className="w-full border rounded-lg px-3 py-2"
               >
                 <option value="">Select</option>
-                {resSlots
-                  .filter((s) => s.available)
-                  .map((s) => (
-                    <option key={s.start} value={s.start}>
-                      {s.start} – {s.end} ({s.remainingCapacity} left)
+                {resSlots.map((s) => {
+                  const start = s.startTime ?? s.start ?? '';
+                  const end = s.endTime ?? s.end ?? '';
+                  return (
+                    <option key={start} value={start}>
+                      {start} – {end}
                     </option>
-                  ))}
+                  );
+                })}
               </select>
             )}
             <button type="button" className="w-full py-2 bg-blue-500 text-white rounded-lg" onClick={applyReschedule}>

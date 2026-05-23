@@ -1,4 +1,5 @@
-const prisma = require('../prisma/client');
+const submissionModel = require('../models/serviceFormSubmission.model');
+const submissionValueModel = require('../models/serviceFormSubmissionValue.model');
 
 function coerceDisplayValue(fieldType, stored) {
   if (stored == null || stored === '') return null;
@@ -43,42 +44,48 @@ async function createSubmission(
   tx,
   { serviceId, appointmentId, residentId, rows, fileMetaByFieldId = {} }
 ) {
-  const submission = await tx.serviceFormSubmission.create({
-    data: {
+  const submission = await submissionModel.createSubmission(
+    {
       serviceId,
       appointmentId,
       residentId,
     },
-  });
+    tx
+  );
 
   if (rows?.length) {
-    await tx.serviceFormSubmissionValue.createMany({
-      data: rows.map((r) => ({
+    await submissionValueModel.createManySubmissionValues(
+      rows.map((r) => ({
         submissionId: submission.id,
         formFieldId: r.formFieldId,
         value: r.value,
       })),
-    });
+      tx
+    );
 
-    const values = await tx.serviceFormSubmissionValue.findMany({
-      where: { submissionId: submission.id },
-      include: { formField: { select: { id: true, fieldType: true } } },
-    });
+    const values = await submissionValueModel.findManySubmissionValues(
+      {
+        where: { submissionId: submission.id },
+        include: { formField: { select: { id: true, fieldType: true } } },
+      },
+      tx
+    );
 
     for (const v of values) {
       if (v.formField.fieldType !== 'file') continue;
       const meta = fileMetaByFieldId[v.formFieldId];
       if (!meta?.fileUrl) continue;
 
-      await tx.uploadedFile.create({
-        data: {
+      await submissionModel.createUploadedFile(
+        {
           appointmentId,
           submissionValueId: v.id,
           fileName: meta.fileName || fileNameFromUrl(meta.fileUrl),
           fileUrl: meta.fileUrl,
           fileType: meta.fileType || null,
         },
-      });
+        tx
+      );
     }
   }
 
@@ -86,8 +93,7 @@ async function createSubmission(
 }
 
 async function loadSubmissionByAppointmentId(appointmentId, options = {}) {
-  const submission = await prisma.serviceFormSubmission.findUnique({
-    where: { appointmentId },
+  const submission = await submissionModel.findSubmissionByAppointmentId(appointmentId, {
     include: {
       values: {
         include: { formField: { select: fieldSelect } },
@@ -121,7 +127,7 @@ async function attachSubmissionsToMany(appointments, options = {}) {
   if (!appointments.length) return appointments;
   const ids = appointments.map((a) => a.id);
 
-  const submissions = await prisma.serviceFormSubmission.findMany({
+  const submissions = await submissionModel.findManySubmissions({
     where: { appointmentId: { in: ids } },
     include: {
       values: {
@@ -158,72 +164,76 @@ async function upsertSubmissionValues(
   rows,
   fileMetaByFieldId = {}
 ) {
-  let submission = await tx.serviceFormSubmission.findUnique({
-    where: { appointmentId },
-  });
+  let submission = await submissionModel.findSubmissionByAppointmentId(appointmentId, {}, tx);
 
   if (!submission) {
-    submission = await tx.serviceFormSubmission.create({
-      data: { serviceId, appointmentId, residentId },
-    });
+    submission = await submissionModel.createSubmission(
+      { serviceId, appointmentId, residentId },
+      tx
+    );
   }
 
   for (const row of rows) {
-    await tx.serviceFormSubmissionValue.upsert({
-      where: {
+    await submissionValueModel.upsertSubmissionValue(
+      {
         submissionId_formFieldId: {
           submissionId: submission.id,
           formFieldId: row.formFieldId,
         },
       },
-      create: {
+      {
         submissionId: submission.id,
         formFieldId: row.formFieldId,
         value: row.value,
       },
-      update: { value: row.value },
-    });
+      { value: row.value },
+      tx
+    );
   }
 
   for (const row of rows) {
     const meta = fileMetaByFieldId[row.formFieldId];
     if (!meta?.fileUrl) continue;
 
-    const valueRow = await tx.serviceFormSubmissionValue.findUnique({
-      where: {
+    const valueRow = await submissionValueModel.findSubmissionValue(
+      {
         submissionId_formFieldId: {
           submissionId: submission.id,
           formFieldId: row.formFieldId,
         },
       },
-      include: { formField: { select: { fieldType: true } } },
-    });
+      { include: { formField: { select: { fieldType: true } } } },
+      tx
+    );
 
     if (!valueRow || valueRow.formField.fieldType !== 'file') continue;
 
-    const existing = await tx.uploadedFile.findUnique({
-      where: { submissionValueId: valueRow.id },
-    });
+    const existing = await submissionModel.findUploadedFile(
+      { submissionValueId: valueRow.id },
+      tx
+    );
 
     if (existing) {
-      await tx.uploadedFile.update({
-        where: { id: existing.id },
-        data: {
+      await submissionModel.updateUploadedFile(
+        existing.id,
+        {
           fileName: meta.fileName || existing.fileName,
           fileUrl: meta.fileUrl,
           fileType: meta.fileType || null,
         },
-      });
+        tx
+      );
     } else {
-      await tx.uploadedFile.create({
-        data: {
+      await submissionModel.createUploadedFile(
+        {
           appointmentId,
           submissionValueId: valueRow.id,
           fileName: meta.fileName || fileNameFromUrl(meta.fileUrl),
           fileUrl: meta.fileUrl,
           fileType: meta.fileType || null,
         },
-      });
+        tx
+      );
     }
   }
 
@@ -231,7 +241,7 @@ async function upsertSubmissionValues(
 }
 
 async function searchByFieldValue(formFieldId, valueFragment) {
-  return prisma.serviceFormSubmissionValue.findMany({
+  return submissionValueModel.searchSubmissionValues({
     where: {
       formFieldId,
       value: { contains: valueFragment },
@@ -274,7 +284,7 @@ function fileNameFromUrl(url) {
  * Staff-facing shape: dynamic labels/types, separate uploadedFiles list.
  */
 async function loadUploadedFilesForAppointment(appointmentId) {
-  return prisma.uploadedFile.findMany({
+  return submissionModel.findUploadedFiles({
     where: { appointmentId },
     orderBy: { uploadedAt: 'asc' },
     include: {

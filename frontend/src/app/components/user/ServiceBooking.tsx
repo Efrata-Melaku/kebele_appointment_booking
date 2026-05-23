@@ -10,22 +10,18 @@ import { normalizeEthiopianPhone } from '../../../lib/ethiopianPhone';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 
+import type { ResidentSlot } from '../../../features/kebele/slotDisplay';
+
 type ServiceDetail = {
   id: number;
   name: string;
   description: string | null;
   durationInMinutes: number;
-  staffCount: number;
   bookable: boolean;
   fields: FormFieldRow[];
 };
 
-type Slot = {
-  start: string;
-  end: string;
-  available: boolean;
-  remainingCapacity: number;
-};
+type Slot = ResidentSlot;
 
 export function ServiceBooking() {
   const { serviceId: serviceIdParam } = useParams<{ serviceId: string }>();

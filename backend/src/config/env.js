@@ -21,6 +21,10 @@ const env = {
   CLOUDINARY_FOLDER: process.env.CLOUDINARY_FOLDER || 'kebele/documents',
   SMS_API_KEY: process.env.SMS_API_KEY,
   SMS_API_URL: process.env.SMS_API_URL,
+  AT_API_KEY: process.env.AT_API_KEY,
+  AT_USERNAME: process.env.AT_USERNAME || 'sandbox',
+  /** Optional sender ID / short code (Africa's Talking approved sender) */
+  AT_SENDER_ID: process.env.AT_SENDER_ID || '',
 };
 
 module.exports = env;

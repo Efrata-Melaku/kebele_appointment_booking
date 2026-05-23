@@ -1,9 +1,12 @@
-const prisma = require('../prisma/client');
+const appointmentModel = require('../models/appointment.model');
+const serviceModel = require('../models/service.model');
 const { APPOINTMENT_STATUS } = require('../config/constants');
 const {
   parseDateParam,
   generateSlotIntervals,
   applyCapacityToSlots,
+  toResidentSlotList,
+  toAdminSlotList,
   atLocalDate,
   slotStartKey,
 } = require('../utils/generateSlots');
@@ -17,14 +20,11 @@ const ACTIVE_STATUSES = [
 ];
 
 async function countBookingsForDay(serviceId, dayStart) {
-  const appointments = await prisma.appointment.findMany({
-    where: {
-      serviceId,
-      slotDate: dayStart,
-      status: { in: ACTIVE_STATUSES },
-    },
-    select: { slotStartTime: true },
-  });
+  const appointments = await appointmentModel.findAppointmentsByServiceAndDay(
+    serviceId,
+    dayStart,
+    ACTIVE_STATUSES
+  );
 
   const map = new Map();
   for (const a of appointments) {
@@ -35,17 +35,16 @@ async function countBookingsForDay(serviceId, dayStart) {
 }
 
 /**
- * Dynamically generate slots for a service/date with availability.
+ * Internal: all intervals with capacity metadata.
  */
-async function getAvailableSlotsForServiceDate(serviceId, dateInput) {
+async function buildSlotsWithCapacity(serviceId, dateInput) {
   const serviceIdNum = Number(serviceId);
   const dayStart = parseDateParam(dateInput);
   if (!dayStart) {
     throw new Error('Invalid date');
   }
 
-  const service = await prisma.service.findUnique({
-    where: { id: serviceIdNum },
+  const service = await serviceModel.findServiceById(serviceIdNum, {
     select: { id: true, durationInMinutes: true, staffCount: true },
   });
 
@@ -72,6 +71,31 @@ async function getAvailableSlotsForServiceDate(serviceId, dateInput) {
 }
 
 /**
+ * Resident booking: only available slots, no capacity/staff fields.
+ */
+async function getAvailableSlotsForResidents(serviceId, dateInput) {
+  const withCapacity = await buildSlotsWithCapacity(serviceId, dateInput);
+  return toResidentSlotList(withCapacity);
+}
+
+/**
+ * Admin/staff: all slots including full ones, with capacity metadata.
+ */
+async function getAvailableSlotsForAdmin(serviceId, dateInput) {
+  const withCapacity = await buildSlotsWithCapacity(serviceId, dateInput);
+  return toAdminSlotList(withCapacity);
+}
+
+/** @deprecated Use getAvailableSlotsForResidents or getAvailableSlotsForAdmin */
+async function getAvailableSlotsForServiceDate(serviceId, dateInput, options = {}) {
+  const audience = options.audience || 'resident';
+  if (audience === 'admin') {
+    return getAvailableSlotsForAdmin(serviceId, dateInput);
+  }
+  return getAvailableSlotsForResidents(serviceId, dateInput);
+}
+
+/**
  * Resolve slot window and validate it exists in the generated schedule.
  */
 async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
@@ -81,8 +105,7 @@ async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
     throw new Error('Invalid date');
   }
 
-  const service = await prisma.service.findUnique({
-    where: { id: serviceIdNum },
+  const service = await serviceModel.findServiceById(serviceIdNum, {
     select: { id: true, durationInMinutes: true, staffCount: true },
   });
 
@@ -109,6 +132,12 @@ async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
     throw new Error('Invalid time slot for this date');
   }
 
+  const bookedByStart = await countBookingsForDay(serviceIdNum, dayStart);
+  const booked = bookedByStart.get(slotStartHHmm) || 0;
+  if (service.staffCount <= 0 || booked >= service.staffCount) {
+    throw new Error('Time slot is fully booked');
+  }
+
   return {
     service,
     dayStart,
@@ -122,14 +151,15 @@ async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
  * Count active bookings for exact slot (used inside transactions).
  */
 async function countSlotBookings(tx, { serviceId, slotDate, slotStartTime }) {
-  return tx.appointment.count({
-    where: {
+  return appointmentModel.countSlotBookings(
+    {
       serviceId,
       slotDate,
       slotStartTime,
       status: { in: ACTIVE_STATUSES },
     },
-  });
+    tx
+  );
 }
 
 async function assertSlotHasCapacity(tx, { serviceId, slotDate, slotStartTime, staffCount }) {
@@ -141,6 +171,8 @@ async function assertSlotHasCapacity(tx, { serviceId, slotDate, slotStartTime, s
 }
 
 module.exports = {
+  getAvailableSlotsForResidents,
+  getAvailableSlotsForAdmin,
   getAvailableSlotsForServiceDate,
   resolveBookableSlot,
   countSlotBookings,

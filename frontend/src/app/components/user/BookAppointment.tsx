@@ -8,12 +8,9 @@ import type { FormFieldRow } from '../../../features/kebele/bookingSchema';
 
 type Dept = { id: number; name: string };
 type Svc = { id: number; name: string; departmentId: number };
-type Slot = {
-  start: string;
-  end: string;
-  available: boolean;
-  remainingCapacity: number;
-};
+import type { ResidentSlot } from '../../../features/kebele/slotDisplay';
+
+type Slot = ResidentSlot;
 
 export function BookAppointment() {
   const nav = useNavigate();

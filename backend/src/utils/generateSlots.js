@@ -76,13 +76,42 @@ function applyCapacityToSlots(intervals, bookedByStartKey, staffCount) {
   return intervals.map((slot) => {
     const booked = bookedByStartKey.get(slot.start) || 0;
     const remaining = Math.max(0, cap - booked);
+    const isAvailable = cap > 0 && booked < cap;
     return {
       start: slot.start,
       end: slot.end,
-      available: cap > 0 && remaining > 0,
+      available: isAvailable,
       remainingCapacity: remaining,
+      bookedCount: booked,
+      maxCapacity: cap,
     };
   });
+}
+
+/** Resident-facing API: only bookable slots, no capacity fields. */
+function toResidentSlotList(slotsWithCapacity) {
+  return slotsWithCapacity
+    .filter((s) => s.available)
+    .map((s, index) => ({
+      id: index + 1,
+      startTime: s.start,
+      endTime: s.end,
+    }));
+}
+
+/** Admin/staff preview: full capacity metadata. */
+function toAdminSlotList(slotsWithCapacity) {
+  return slotsWithCapacity.map((s, index) => ({
+    id: index + 1,
+    start: s.start,
+    end: s.end,
+    startTime: s.start,
+    endTime: s.end,
+    available: s.available,
+    remainingCapacity: s.remainingCapacity,
+    bookedCount: s.bookedCount,
+    maxCapacity: s.maxCapacity,
+  }));
 }
 
 function slotStartKey(date) {
@@ -96,5 +125,7 @@ module.exports = {
   buildWorkWindows,
   generateSlotIntervals,
   applyCapacityToSlots,
+  toResidentSlotList,
+  toAdminSlotList,
   slotStartKey,
 };

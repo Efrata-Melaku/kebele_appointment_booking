@@ -1,4 +1,4 @@
-const prisma = require('../prisma/client');
+const serviceFormFieldModel = require('../models/serviceFormField.model');
 
 const ALLOWED_TYPES = new Set([
   'text',
@@ -15,7 +15,7 @@ const ALLOWED_TYPES = new Set([
  * Active fields only — used for resident booking and validation.
  */
 async function loadActiveFormFieldDefinitions(serviceId) {
-  return prisma.serviceFormField.findMany({
+  return serviceFormFieldModel.findManyFormFields({
     where: { serviceId: Number(serviceId), isActive: true },
     orderBy: [{ order: 'asc' }, { id: 'asc' }],
     select: {

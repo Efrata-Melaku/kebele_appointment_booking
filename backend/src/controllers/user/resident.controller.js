@@ -1,13 +1,7 @@
-const prisma = require('../../prisma/client');
 const appointmentService = require('../../services/appointment.service');
 const { successResponse, errorResponse } = require('../../utils/response');
-const { requireNormalizedPhone } = require('../../utils/ethiopianPhone');
 
 class ResidentController {
-  /**
-   * GET /api/resident/my-appointments?phone=...
-   * GET /api/resident/my-appointments?phone=...&appointmentNumber=APP-...
-   */
   async getMyAppointments(req, res) {
     try {
       const phone = req.query.phone;
@@ -21,15 +15,7 @@ class ResidentController {
         return successResponse(res, 'Appointment retrieved successfully', data);
       }
 
-      const resident = await prisma.resident.findUnique({
-        where: { phone },
-      });
-
-      if (!resident) {
-        return successResponse(res, 'No appointments found', []);
-      }
-
-      const appointments = await appointmentService.getUserAppointments(resident.id);
+      const appointments = await appointmentService.getUserAppointmentsByPhone(phone);
       successResponse(res, 'Appointments retrieved successfully', appointments);
     } catch (error) {
       if (error.statusCode === 400) {

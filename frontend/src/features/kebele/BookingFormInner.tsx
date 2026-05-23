@@ -49,20 +49,13 @@ import { appendResponsesToFormData } from './formSubmit';
 import type { ResponsesMap } from './formPaths';
 
 import { cn } from '../../app/components/ui/utils';
+import {
+  formatSlotTimeRange,
+  normalizeResidentSlot,
+  type ResidentSlot,
+} from './slotDisplay';
 
-
-
-type Slot = {
-
-  start: string;
-
-  end: string;
-
-  available: boolean;
-
-  remainingCapacity: number;
-
-};
+type Slot = ResidentSlot;
 
 
 
@@ -258,9 +251,9 @@ function BookingFormFields({
 
   const slotStart = watch('slotStart');
 
-  const availableSlots = slots.filter((s) => s.available);
+  const residentSlots = useMemo(() => slots.map(normalizeResidentSlot), [slots]);
 
-  const hasPickableSlot = availableSlots.length > 0;
+  const hasPickableSlot = residentSlots.length > 0;
 
 
 
@@ -529,39 +522,37 @@ function BookingFormFields({
 
             </div>
 
-          ) : slots.length === 0 ? (
+          ) : residentSlots.length === 0 ? (
 
-            <p className="mt-2 text-sm text-gray-500">No slots on this date. Try another day.</p>
+            <p className="mt-2 text-sm text-gray-500">
+              No available appointments for this date.
+            </p>
 
           ) : (
 
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
 
-              {slots.map((s) => {
+              {residentSlots.map((s) => {
 
-                const selected = slotStart === s.start;
+                const selected = slotStart === s.startTime;
 
                 return (
 
                   <button
 
-                    key={s.start}
+                    key={`${s.id}-${s.startTime}`}
 
                     type="button"
 
-                    disabled={!s.available || isSubmitting}
+                    disabled={isSubmitting}
 
-                    onClick={() => setValue('slotStart', s.start, { shouldValidate: true })}
+                    onClick={() => setValue('slotStart', s.startTime, { shouldValidate: true })}
 
                     className={cn(
 
                       'rounded-lg border px-3 py-3 text-left text-sm transition-colors',
 
-                      !s.available && 'cursor-not-allowed bg-gray-50 text-gray-400',
-
-                      s.available &&
-
-                        !selected &&
+                      !selected &&
 
                         'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50',
 
@@ -571,12 +562,8 @@ function BookingFormFields({
 
                   >
 
-                    <span className="block font-medium">{s.start}</span>
-
-                    <span className="block text-xs text-gray-500">
-
-                      {s.available ? `${s.remainingCapacity} spots left` : 'Full'}
-
+                    <span className="block font-medium text-gray-900">
+                      {formatSlotTimeRange(s.startTime, s.endTime)}
                     </span>
 
                   </button>
@@ -592,12 +579,6 @@ function BookingFormFields({
           {errors.slotStart && (
 
             <p className="mt-2 text-sm text-red-600">{String(errors.slotStart.message)}</p>
-
-          )}
-
-          {!slotsLoading && dStr && slots.length > 0 && !hasPickableSlot && (
-
-            <p className="mt-2 text-sm text-amber-700">All slots are full for this date.</p>
 
           )}
 

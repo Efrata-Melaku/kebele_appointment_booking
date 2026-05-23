@@ -1,11 +1,13 @@
-const prisma = require('../../prisma/client');
+const serviceService = require('../../services/service.service');
+const serviceFormFieldModel = require('../../models/serviceFormField.model');
+const formFieldService = require('../../services/formField.service');
 const { successResponse, errorResponse } = require('../../utils/response');
 const { assertValidFieldType, parseOptions } = require('../../services/dynamicForm.service');
-const formFieldService = require('../../services/formField.service');
+const { AppError } = require('../../utils/AppError');
 
 function handleServiceError(res, error, fallback) {
-  if (error.statusCode) {
-    return errorResponse(res, error.message, error.statusCode);
+  if (error instanceof AppError || error.statusCode) {
+    return errorResponse(res, error.message, error.statusCode || 500);
   }
   if (error.message && error.message.includes('Invalid field type')) {
     return errorResponse(res, error.message, 400);
@@ -18,8 +20,7 @@ class ServiceFormFieldController {
   async listFormFields(req, res) {
     try {
       const serviceId = parseInt(req.params.id, 10);
-      const service = await prisma.service.findUnique({
-        where: { id: serviceId },
+      const service = await serviceService.getServiceById(serviceId, {
         select: { id: true, name: true },
       });
       if (!service) {
@@ -59,7 +60,7 @@ class ServiceFormFieldController {
     try {
       const serviceId = parseInt(req.params.id, 10);
       const fieldId = parseInt(req.params.fieldId, 10);
-      const existing = await prisma.serviceFormField.findUnique({ where: { id: fieldId } });
+      const existing = await serviceFormFieldModel.findFormFieldById(fieldId);
       if (!existing || existing.serviceId !== serviceId) {
         return errorResponse(res, 'Form field not found for this service', 404);
       }
@@ -86,7 +87,7 @@ class ServiceFormFieldController {
     try {
       const serviceId = parseInt(req.params.id, 10);
       const fieldId = parseInt(req.params.fieldId, 10);
-      const existing = await prisma.serviceFormField.findUnique({ where: { id: fieldId } });
+      const existing = await serviceFormFieldModel.findFormFieldById(fieldId);
       if (!existing || existing.serviceId !== serviceId) {
         return errorResponse(res, 'Form field not found for this service', 404);
       }
@@ -120,11 +121,6 @@ class ServiceFormFieldController {
         return errorResponse(res, 'fields must be an array', 400);
       }
 
-      const service = await prisma.service.findUnique({ where: { id: serviceId } });
-      if (!service) {
-        return errorResponse(res, 'Service not found', 404);
-      }
-
       const labels = new Set();
       for (let i = 0; i < fields.length; i += 1) {
         const f = fields[i];
@@ -153,29 +149,7 @@ class ServiceFormFieldController {
         }
       }
 
-      await prisma.$transaction(async (tx) => {
-        await tx.serviceFormField.updateMany({
-          where: { serviceId },
-          data: { isActive: false },
-        });
-        for (let i = 0; i < fields.length; i += 1) {
-          const f = fields[i];
-          await tx.serviceFormField.create({
-            data: {
-              serviceId,
-              label: String(f.label).trim(),
-              fieldType: f.fieldType,
-              placeholder: f.placeholder != null ? String(f.placeholder) : null,
-              required: Boolean(f.required),
-              options: formFieldService.normalizeOptionsInput(f.options),
-              order: typeof f.order === 'number' ? f.order : i,
-              isActive: true,
-            },
-          });
-        }
-      });
-
-      const updated = await formFieldService.listFieldsForService(serviceId);
+      const updated = await formFieldService.replaceFormFieldsForService(serviceId, fields);
       successResponse(res, 'Form fields saved successfully', updated, 201);
     } catch (error) {
       handleServiceError(res, error, 'Failed to save form fields');

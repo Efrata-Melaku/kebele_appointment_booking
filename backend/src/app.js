@@ -39,10 +39,16 @@ app.use(cors({
   credentials: true,
 }));
 
+// Production: 100 requests / 15 min per IP. Development: much higher (Vite HMR + admin UI burst easily).
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Too many requests from this IP, please try again later.',
+  max: env.NODE_ENV === 'production' ? 100 : 2000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many requests from this IP, please try again later.',
+  },
 });
 app.use('/api/', limiter);
 
@@ -57,6 +63,12 @@ if (process.env.SERVE_LEGACY_UPLOADS === 'true') {
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
 });
+
+// SMS test routes (development / staging only)
+if (env.NODE_ENV !== 'production') {
+  const smsTestRoutes = require('./routes/test/sms.routes');
+  app.use('/api/test', smsTestRoutes);
+}
 
 app.use('/api/auth', authRoutes);
 

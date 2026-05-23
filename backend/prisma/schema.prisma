@@ -151,6 +151,8 @@ model Appointment {
   slotEndTime   DateTime
   status      AppointmentStatus @default(PENDING)
   documentUrl String?
+  reminderSent   Boolean   @default(false)
+  reminderSentAt DateTime?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   feedbackId  Int?      @unique

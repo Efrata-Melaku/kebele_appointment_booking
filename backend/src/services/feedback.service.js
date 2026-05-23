@@ -1,4 +1,6 @@
-const prisma = require('../prisma/client');
+const appointmentModel = require('../models/appointment.model');
+const feedbackModel = require('../models/feedback.model');
+const { runTransaction } = require('../models/_client');
 const { APPOINTMENT_STATUS } = require('../config/constants');
 const {
   assertPhoneMatchesResident,
@@ -29,8 +31,7 @@ function mapResidentFeedback(fb) {
 
 async function loadAppointmentForResident(appointmentId, phone) {
   const normalizedPhone = requireNormalizedPhone(phone);
-  const appointment = await prisma.appointment.findUnique({
-    where: { id: Number(appointmentId) },
+  const appointment = await appointmentModel.findAppointmentById(Number(appointmentId), {
     include: {
       feedback: true,
       group: { include: { resident: true } },
@@ -71,18 +72,21 @@ class FeedbackService {
       throw err;
     }
 
-    const feedback = await prisma.$transaction(async (tx) => {
-      const created = await tx.feedback.create({
-        data: {
+    const feedback = await runTransaction(async (tx) => {
+      const created = await feedbackModel.createFeedback(
+        {
           rating: Number(rating),
           comment: comment?.trim() || null,
         },
-      });
+        tx
+      );
 
-      await tx.appointment.update({
-        where: { id: appointment.id },
-        data: { feedbackId: created.id },
-      });
+      await appointmentModel.updateAppointment(
+        appointment.id,
+        { feedbackId: created.id },
+        {},
+        tx
+      );
 
       return created;
     });
@@ -110,12 +114,9 @@ class FeedbackService {
       throw err;
     }
 
-    const feedback = await prisma.feedback.update({
-      where: { id: appointment.feedbackId },
-      data: {
-        ...(rating != null ? { rating: Number(rating) } : {}),
-        ...(comment !== undefined ? { comment: comment?.trim() || null } : {}),
-      },
+    const feedback = await feedbackModel.updateFeedback(appointment.feedbackId, {
+      ...(rating != null ? { rating: Number(rating) } : {}),
+      ...(comment !== undefined ? { comment: comment?.trim() || null } : {}),
     });
 
     return mapResidentFeedback(feedback);
@@ -161,8 +162,8 @@ class FeedbackService {
     const where = this.buildAdminWhere(filters);
 
     const [total, rows] = await Promise.all([
-      prisma.feedback.count({ where }),
-      prisma.feedback.findMany({
+      feedbackModel.countFeedback(where),
+      feedbackModel.findManyFeedback({
         where,
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -188,7 +189,7 @@ class FeedbackService {
 
   async getAdminFeedbackStats(filters = {}) {
     const where = this.buildAdminWhere(filters);
-    const rows = await prisma.feedback.findMany({
+    const rows = await feedbackModel.findManyFeedback({
       where,
       select: { rating: true },
     });
@@ -213,8 +214,7 @@ class FeedbackService {
   }
 
   async getAdminFeedbackDetail(feedbackId) {
-    const feedback = await prisma.feedback.findUnique({
-      where: { id: Number(feedbackId) },
+    const feedback = await feedbackModel.findFeedbackById(Number(feedbackId), {
       select: {
         id: true,
         rating: true,
@@ -234,7 +234,7 @@ class FeedbackService {
   }
 
   async getReporting() {
-    const rows = await prisma.feedback.findMany({
+    const rows = await feedbackModel.findManyFeedback({
       where: { rating: { gte: 1, lte: 5 } },
       select: {
         rating: true,

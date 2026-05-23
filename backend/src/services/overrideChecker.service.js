@@ -1,33 +1,35 @@
-const prisma = require('../prisma/client');
+const scheduleModel = require('../models/schedule.model');
 const { calendarDateOnly } = require('../utils/generateSlots');
 
 async function getOrCreateDefaultTemplate() {
-  let t = await prisma.workScheduleTemplate.findFirst({ orderBy: { id: 'asc' } });
+  let t = await scheduleModel.findFirstWorkScheduleTemplate({ orderBy: { id: 'asc' } });
   if (!t) {
-    t = await prisma.workScheduleTemplate.create({ data: {} });
+    t = await scheduleModel.createWorkScheduleTemplate({});
   }
   return t;
 }
 
 function weekdayFlag(template, d) {
-  const map = [template.sun, template.mon, template.tue, template.wed, template.thu, template.fri, template.sat];
+  const map = [
+    template.sun,
+    template.mon,
+    template.tue,
+    template.wed,
+    template.thu,
+    template.fri,
+    template.sat,
+  ];
   return map[d.getDay()];
 }
 
 async function getOfficeOverrideForDate(date) {
   const day = calendarDateOnly(date);
-  return prisma.officeScheduleOverride.findUnique({
-    where: { date: day },
-  });
+  return scheduleModel.findOfficeOverrideByDate(day);
 }
 
 async function getServiceOverrideForDate(serviceId, date) {
   const day = calendarDateOnly(date);
-  return prisma.serviceScheduleOverride.findUnique({
-    where: {
-      date_serviceId: { date: day, serviceId },
-    },
-  });
+  return scheduleModel.findServiceOverrideByDate(day, serviceId);
 }
 
 /**
