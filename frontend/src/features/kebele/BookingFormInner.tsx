@@ -78,6 +78,8 @@ type Props = {
 
   slotsLoading: boolean;
 
+  slotsHint?: string;
+
   fldLoad: boolean;
 
   onCancel: () => void;
@@ -115,6 +117,8 @@ export function BookingFormInner({
   slots,
 
   slotsLoading,
+
+  slotsHint,
 
   fldLoad,
 
@@ -180,6 +184,8 @@ export function BookingFormInner({
 
       slotsLoading={slotsLoading}
 
+      slotsHint={slotsHint}
+
       fldLoad={fldLoad}
 
       onCancel={onCancel}
@@ -211,6 +217,8 @@ function BookingFormFields({
   slots,
 
   slotsLoading,
+
+  slotsHint,
 
   fldLoad,
 
@@ -513,7 +521,10 @@ function BookingFormFields({
 
           ) : slots.length === 0 ? (
 
-            <p className="mt-2 text-sm text-gray-500">No slots on this date. Try another day.</p>
+            <p className="mt-2 text-sm text-amber-800 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+              {slotsHint ||
+                'No time slots on this date. The office may be closed (weekends) or this service has no staff — try a weekday or contact the kebele.'}
+            </p>
 
           ) : (
 
@@ -577,7 +588,13 @@ function BookingFormFields({
 
           )}
 
-          {!slotsLoading && dStr && slots.length > 0 && !hasPickableSlot && (
+          {slotsHint && slots.length > 0 ? (
+            <p className="mt-2 text-sm text-amber-800 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+              {slotsHint}
+            </p>
+          ) : null}
+
+          {!slotsLoading && dStr && slots.length > 0 && !hasPickableSlot && !slotsHint && (
 
             <p className="mt-2 text-sm text-amber-700">All slots are full for this date.</p>
 

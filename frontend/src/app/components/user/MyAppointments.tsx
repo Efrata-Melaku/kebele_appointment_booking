@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Edit, Trash2, MessageSquare, X, Star, Loader2, FileEdit } from 'lucide-react';
 import { http } from '../../../lib/http';
 import { apiFetch, apiJson } from '../../../lib/api';
+import { nextWeekdayISO, parseSlotsResponse } from '../../../features/kebele/slotUtils';
 import { getResidentPhone, setResidentPhone } from '../../../lib/auth';
 import { EditResponsesForm } from '../../../features/kebele/EditResponsesForm';
 import type { FormResponseRow, ServiceFormFieldDef } from '../../../features/kebele/formTypes';
@@ -35,6 +36,7 @@ export function MyAppointments() {
   const [resSlots, setResSlots] = useState<
     { start: string; end: string; available: boolean; remainingCapacity: number }[]
   >([]);
+  const [resSlotsHint, setResSlotsHint] = useState('');
   const [resDate, setResDate] = useState('');
   const [resSlotStart, setResSlotStart] = useState('');
   const [lookupRef, setLookupRef] = useState('');
@@ -146,16 +148,17 @@ export function MyAppointments() {
   async function reloadSlots(serviceId: number, dateISO: string) {
     setResBusy(true);
     try {
-      const slots = await apiJson<
-        { start: string; end: string; available: boolean; remainingCapacity: number }[]
-      >(
+      const data = await apiJson<unknown>(
         `/api/user/appointments/available-slots?serviceId=${serviceId}&date=${encodeURIComponent(dateISO)}`,
         { skipAuth: true }
       );
-      setResSlots(slots);
+      const parsed = parseSlotsResponse(data);
+      setResSlots(parsed.slots);
+      setResSlotsHint(parsed.hint || '');
       setResSlotStart('');
     } catch {
       setResSlots([]);
+      setResSlotsHint('');
     } finally {
       setResBusy(false);
     }
@@ -174,7 +177,7 @@ export function MyAppointments() {
     setSelected(apt);
     const d = apt.timeSlot?.date
       ? new Date(apt.timeSlot.date).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
+      : nextWeekdayISO();
     setResDate(d);
     setResSlotStart('');
     setShowReschedule(true);
@@ -544,7 +547,11 @@ export function MyAppointments() {
                 onChange={(e) => setResSlotStart(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2"
               >
-                <option value="">Select</option>
+                <option value="">
+                  {resSlots.filter((s) => s.available).length === 0
+                    ? 'No slots available'
+                    : 'Select a time'}
+                </option>
                 {resSlots
                   .filter((s) => s.available)
                   .map((s) => (
@@ -554,6 +561,14 @@ export function MyAppointments() {
                   ))}
               </select>
             )}
+            {resSlotsHint ? (
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                {resSlotsHint}
+              </p>
+            ) : null}
+            {!resBusy && resSlots.length > 0 && resSlots.every((s) => !s.available) && !resSlotsHint ? (
+              <p className="text-sm text-gray-600">All slots are full on this date. Try another day.</p>
+            ) : null}
             <button type="button" className="w-full py-2 bg-blue-500 text-white rounded-lg" onClick={applyReschedule}>
               Confirm reschedule
             </button>

@@ -7,6 +7,7 @@ import type { FormFieldRow } from '../../../features/kebele/bookingSchema';
 import { getServiceIcon } from '../../../features/kebele/serviceIcons';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
+import { nextWeekdayISO, parseSlotsResponse, type SlotRow } from '../../../features/kebele/slotUtils';
 
 type ServiceDetail = {
   id: number;
@@ -18,13 +19,6 @@ type ServiceDetail = {
   fields: FormFieldRow[];
 };
 
-type Slot = {
-  start: string;
-  end: string;
-  available: boolean;
-  remainingCapacity: number;
-};
-
 export function ServiceBooking() {
   const { serviceId: serviceIdParam } = useParams<{ serviceId: string }>();
   const serviceId = Number(serviceIdParam);
@@ -33,9 +27,10 @@ export function ServiceBooking() {
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [boot, setBoot] = useState(true);
   const [bootErr, setBootErr] = useState('');
-  const [slots, setSlots] = useState<Slot[]>([]);
+  const [slots, setSlots] = useState<SlotRow[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
-  const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
+  const [slotsHint, setSlotsHint] = useState('');
+  const [dateStr, setDateStr] = useState(() => nextWeekdayISO());
   const [done, setDone] = useState(false);
   const [refNo, setRefNo] = useState<string | null>(null);
   const [topErr, setTopErr] = useState('');
@@ -60,15 +55,24 @@ export function ServiceBooking() {
   useEffect(() => {
     if (!serviceId || !dateStr || !service?.bookable) {
       setSlots([]);
+      setSlotsHint('');
       return;
     }
     setSlotsLoading(true);
     http
-      .get<{ success: boolean; data: Slot[] }>(
+      .get<{ success: boolean; data: unknown }>(
         `/api/user/appointments/available-slots?serviceId=${serviceId}&date=${encodeURIComponent(dateStr)}`
       )
-      .then((r) => r.data.success && setSlots(r.data.data))
-      .catch(() => setSlots([]))
+      .then((r) => {
+        if (!r.data.success) return;
+        const parsed = parseSlotsResponse(r.data.data);
+        setSlots(parsed.slots);
+        setSlotsHint(parsed.hint || '');
+      })
+      .catch(() => {
+        setSlots([]);
+        setSlotsHint('');
+      })
       .finally(() => setSlotsLoading(false));
   }, [serviceId, dateStr, service?.bookable]);
 
@@ -179,6 +183,7 @@ export function ServiceBooking() {
               fields={service.fields}
               slots={slots}
               slotsLoading={slotsLoading}
+              slotsHint={slotsHint}
               fldLoad={false}
               onCancel={() => nav('/user/book')}
               onSubmitBooking={onSubmitBooking}
