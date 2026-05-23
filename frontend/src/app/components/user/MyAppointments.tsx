@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Edit, Trash2, MessageSquare, X, Star, Loader2, FileEdit } from 'lucide-react';
+import { Edit, Trash2, MessageSquare, X, Loader2, FileEdit } from 'lucide-react';
 import { http } from '../../../lib/http';
 import { apiFetch, apiJson } from '../../../lib/api';
 import { getResidentPhone, setResidentPhone } from '../../../lib/auth';
+import {
+  ETHIOPIAN_PHONE_MESSAGE,
+  normalizeEthiopianPhone,
+} from '../../../lib/ethiopianPhone';
 import { EditResponsesForm } from '../../../features/kebele/EditResponsesForm';
+import { ResidentFeedbackModal } from '../../../features/kebele/ResidentFeedbackModal';
 import type { FormResponseRow, ServiceFormFieldDef } from '../../../features/kebele/formTypes';
 
 type Apt = {
@@ -14,11 +19,13 @@ type Apt = {
   service?: { name: string };
   timeSlot?: { date: string; startTime: string; endTime?: string };
   formResponses?: FormResponseRow[];
+  feedback?: { id: number; rating: number; comment?: string | null } | null;
 };
 
 export function MyAppointments() {
   const [phone, setPhoneInput] = useState(() => getResidentPhone() || '');
   const [savedPhone, setSavedPhone] = useState(() => getResidentPhone());
+  const [phoneError, setPhoneError] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [list, setList] = useState<Apt[]>([]);
@@ -26,11 +33,9 @@ export function MyAppointments() {
 
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackMode, setFeedbackMode] = useState<'create' | 'view' | 'edit'>('create');
   const [showReschedule, setShowReschedule] = useState(false);
   const [selected, setSelected] = useState<Apt | null>(null);
-
-  const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState('');
 
   const [resSlots, setResSlots] = useState<
     { start: string; end: string; available: boolean; remainingCapacity: number }[]
@@ -54,7 +59,7 @@ export function MyAppointments() {
     setError('');
     try {
       const { res, body } = await apiFetch(
-        `/api/user/appointments?phone=${encodeURIComponent(p)}`,
+        `/api/resident/my-appointments?phone=${encodeURIComponent(p)}`,
         { skipAuth: true }
       );
       if (!res.ok || !body?.success || body.data === undefined)
@@ -77,21 +82,41 @@ export function MyAppointments() {
   }, [list, tab]);
 
   function persistPhoneAndLoad() {
-    const p = phone.trim();
-    setResidentPhone(p);
-    setSavedPhone(p);
+    const normalized = normalizeEthiopianPhone(phone);
+    if (!normalized) {
+      setPhoneError(ETHIOPIAN_PHONE_MESSAGE);
+      setError('');
+      return;
+    }
+    setPhoneError('');
+    setPhoneInput(normalized);
+    setResidentPhone(normalized);
+    setSavedPhone(normalized);
     setError('');
-    void load(p);
+    void load(normalized);
   }
 
   async function runLookup() {
     const ref = lookupRef.trim();
     if (!ref) return;
+    const normalized = normalizeEthiopianPhone(savedPhone || phone);
+    if (!normalized) {
+      setPhoneError(ETHIOPIAN_PHONE_MESSAGE);
+      return;
+    }
+    setPhoneError('');
     setLookupBusy(true);
     setError('');
     setLookupResult(null);
     try {
-      const data = await apiJson<unknown>(`/api/user/appointments/${encodeURIComponent(ref)}`, { skipAuth: true });
+      const q = new URLSearchParams({
+        phone: normalized,
+        appointmentNumber: ref,
+      });
+      const data = await apiJson<unknown>(
+        `/api/resident/my-appointments?${q.toString()}`,
+        { skipAuth: true }
+      );
       setLookupResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Lookup failed');
@@ -117,29 +142,6 @@ export function MyAppointments() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Cancel failed');
-    }
-  }
-
-  async function submitFeedback() {
-    if (!selected || rating < 1) return;
-    try {
-      const { res, body } = await apiFetch('/api/user/feedback', {
-        method: 'POST',
-        skipAuth: true,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appointmentId: selected.id,
-          rating,
-          comment: comment.trim() || undefined,
-        }),
-      });
-      if (!res.ok || !body?.success) throw new Error((body as { error?: string })?.error || 'Failed');
-      setShowFeedbackModal(false);
-      setSelected(null);
-      setRating(0);
-      setComment('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Feedback failed');
     }
   }
 
@@ -313,19 +315,29 @@ export function MyAppointments() {
       </div>
 
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex flex-col sm:flex-row gap-2">
-        <input
-          type="tel"
-          placeholder="Phone number"
-          value={phone}
-          onChange={(e) => setPhoneInput(e.target.value)}
-          className="flex-1 px-4 py-2 border border-gray-200 rounded-lg"
-        />
+        <div className="flex-1">
+          <input
+            type="tel"
+            placeholder="09XXXXXXXX"
+            value={phone}
+            onChange={(e) => {
+              setPhoneInput(e.target.value);
+              if (phoneError) setPhoneError('');
+            }}
+            className="w-full px-4 py-2 border border-gray-200 rounded-lg"
+            aria-invalid={!!phoneError}
+          />
+          {phoneError ? (
+            <p className="mt-1 text-sm text-red-600">{phoneError}</p>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={persistPhoneAndLoad}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          disabled={loading}
+          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
         >
-          Load appointments
+          {loading ? 'Loading…' : 'Load appointments'}
         </button>
       </div>
 
@@ -415,16 +427,44 @@ export function MyAppointments() {
                     </>
                   ) : null}
                   {canFeedback ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelected(apt);
-                        setShowFeedbackModal(true);
-                      }}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg text-sm"
-                    >
-                      <MessageSquare className="w-4 h-4" /> Feedback
-                    </button>
+                    apt.feedback ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected(apt);
+                            setFeedbackMode('view');
+                            setShowFeedbackModal(true);
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg text-sm"
+                        >
+                          <MessageSquare className="w-4 h-4" /> View feedback
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelected(apt);
+                            setFeedbackMode('edit');
+                            setShowFeedbackModal(true);
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm"
+                        >
+                          Edit feedback
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(apt);
+                          setFeedbackMode('create');
+                          setShowFeedbackModal(true);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg text-sm"
+                      >
+                        <MessageSquare className="w-4 h-4" /> Leave feedback
+                      </button>
+                    )
                   ) : null}
                 </div>
               </div>
@@ -459,35 +499,18 @@ export function MyAppointments() {
         </div>
       ) : null}
 
-      {showFeedbackModal && selected ? (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <div className="flex justify-between mb-4">
-              <h3 className="text-xl text-gray-800">Feedback</h3>
-              <button type="button" onClick={() => setShowFeedbackModal(false)}>
-                <X className="w-6 h-6 text-gray-400" />
-              </button>
-            </div>
-            <div className="flex gap-2 justify-center mb-4">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button key={star} type="button" onClick={() => setRating(star)}>
-                  <Star
-                    className={`w-8 h-8 ${star <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
-                  />
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="w-full border rounded-lg px-3 py-2 mb-4"
-              rows={3}
-            />
-            <button type="button" className="w-full py-2 bg-purple-600 text-white rounded-lg" onClick={submitFeedback}>
-              Submit
-            </button>
-          </div>
-        </div>
+      {showFeedbackModal && selected && savedPhone ? (
+        <ResidentFeedbackModal
+          open={showFeedbackModal}
+          appointmentId={selected.id}
+          phone={savedPhone}
+          mode={feedbackMode}
+          onClose={() => {
+            setShowFeedbackModal(false);
+            setSelected(null);
+          }}
+          onSaved={() => void load()}
+        />
       ) : null}
 
       {showEditForm && selected ? (

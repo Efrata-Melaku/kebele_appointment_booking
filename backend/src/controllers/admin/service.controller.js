@@ -3,14 +3,7 @@ const { successResponse, errorResponse } = require('../../utils/response');
 class ServiceController {
   async createService(req, res) {
     try {
-      const {
-        name,
-        description,
-        durationInMinutes,
-        requiredDocuments,
-        hasTeyazeRequirement,
-        departmentId,
-      } = req.body;
+      const { name, description, durationInMinutes, requiredDocuments, departmentId } = req.body;
 
       const department = await prisma.department.findUnique({
         where: { id: departmentId },
@@ -39,7 +32,6 @@ class ServiceController {
           durationInMinutes,
           staffCount: 0,
           requiredDocuments,
-          hasTeyazeRequirement,
           departmentId,
         },
         include: {
@@ -108,14 +100,7 @@ class ServiceController {
   async updateService(req, res) {
     try {
       const { id } = req.params;
-      const {
-        name,
-        description,
-        durationInMinutes,
-        requiredDocuments,
-        hasTeyazeRequirement,
-        departmentId,
-      } = req.body;
+      const { name, description, durationInMinutes, requiredDocuments, departmentId } = req.body;
 
       const trimmedName = String(name).trim();
       const dup = await prisma.service.findFirst({
@@ -136,7 +121,6 @@ class ServiceController {
           description,
           durationInMinutes,
           requiredDocuments,
-          hasTeyazeRequirement,
           departmentId,
         },
         include: {

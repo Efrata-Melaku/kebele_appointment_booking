@@ -1,6 +1,7 @@
+const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
 
 if (!process.env.JWT_SECRET) {
   console.warn('[env] JWT_SECRET is not set. Admin and staff JWT authentication requires it.');

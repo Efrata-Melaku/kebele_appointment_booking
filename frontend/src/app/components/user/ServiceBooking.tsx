@@ -5,6 +5,8 @@ import { http } from '../../../lib/http';
 import { BookingFormInner } from '../../../features/kebele/BookingFormInner';
 import type { FormFieldRow } from '../../../features/kebele/bookingSchema';
 import { getServiceIcon } from '../../../features/kebele/serviceIcons';
+import { setResidentPhone } from '../../../lib/auth';
+import { normalizeEthiopianPhone } from '../../../lib/ethiopianPhone';
 import { Skeleton } from '../ui/skeleton';
 import { Button } from '../ui/button';
 
@@ -89,6 +91,14 @@ export function ServiceBooking() {
   async function onSubmitBooking(fd: FormData) {
     setTopErr('');
     try {
+      const rawPhone = fd.get('phone');
+      if (typeof rawPhone === 'string') {
+        const normalized = normalizeEthiopianPhone(rawPhone);
+        if (normalized) {
+          fd.set('phone', normalized);
+          setResidentPhone(normalized);
+        }
+      }
       const res = await http.post('/api/user/appointments', fd);
       const b = res.data as {
         success?: boolean;

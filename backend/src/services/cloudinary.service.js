@@ -1,15 +1,18 @@
 const path = require('path');
 const cloudinary = require('../config/cloudinary');
+const { configureCloudinary } = require('../config/cloudinary');
 
-const DEFAULT_FOLDER = process.env.CLOUDINARY_FOLDER || 'kebele/documents';
+const DEFAULT_FOLDER = (process.env.CLOUDINARY_FOLDER || 'kebele/documents').trim();
 
 function assertConfigured() {
-  if (
-    !process.env.CLOUDINARY_CLOUD_NAME ||
-    !process.env.CLOUDINARY_API_KEY ||
-    !process.env.CLOUDINARY_API_SECRET
-  ) {
+  const { ok, cloud_name } = configureCloudinary();
+  if (!ok) {
     throw new Error('Cloudinary is not configured on the server');
+  }
+  if (/^root$/i.test(cloud_name)) {
+    throw new Error(
+      'Invalid CLOUDINARY_CLOUD_NAME "Root". Use the cloud name from your Cloudinary dashboard (e.g. drkrjwk2w), not "Root" or your MySQL username.'
+    );
   }
 }
 

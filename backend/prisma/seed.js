@@ -28,7 +28,6 @@ async function main() {
         durationInMinutes: 30,
         staffCount: 0,
         departmentId: dept.id,
-        hasTeyazeRequirement: false,
       },
     });
   }

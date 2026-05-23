@@ -8,6 +8,8 @@ import { ScheduleOverrides } from "./components/admin/ScheduleOverrides";
 import { ServicesManagement } from "./components/admin/ServicesManagement";
 import { ServiceFormBuilder } from "./components/admin/ServiceFormBuilder";
 import { Feedback } from "./components/admin/Feedback";
+import { AdminAppointments } from "./components/admin/AdminAppointments";
+import { AdminAppointmentDetails } from "./components/admin/AdminAppointmentDetails";
 import { Reports } from "./components/admin/Reports";
 import { Settings } from "./components/admin/Settings";
 import { StaffDashboard } from "./components/staff/StaffDashboard";
@@ -33,6 +35,8 @@ export const router = createBrowserRouter([
     Component: DashboardLayout,
     children: [
       { index: true, Component: AdminDashboard },
+      { path: "appointments", Component: AdminAppointments },
+      { path: "appointments/:id", Component: AdminAppointmentDetails },
       { path: "staff", Component: ManageStaff },
       { path: "houseowners", Component: HouseownerRecords },
       { path: "limits", Component: AppointmentLimits },

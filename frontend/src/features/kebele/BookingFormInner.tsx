@@ -270,7 +270,7 @@ function BookingFormFields({
 
     fd.append('fullName', v.fullName.trim());
 
-    fd.append('phone', v.phone.trim());
+    fd.append('phone', v.phone);
 
     fd.append('gender', v.gender);
 
@@ -357,6 +357,7 @@ function BookingFormFields({
           <Input
             className="mt-1"
             type="tel"
+            placeholder="09XXXXXXXX"
             autoComplete="tel"
             aria-invalid={!!errors.phone}
             {...register('phone')}

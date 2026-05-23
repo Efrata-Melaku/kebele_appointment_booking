@@ -1,3 +1,5 @@
+import { normalizeEthiopianPhone } from './ethiopianPhone';
+
 export type AuthUser = {
   id: number;
   name: string;
@@ -34,7 +36,8 @@ export function getAuthUser(): AuthUser | null {
 }
 
 export function setResidentPhone(phone: string) {
-  localStorage.setItem(RESIDENT_PHONE, phone.trim());
+  const normalized = normalizeEthiopianPhone(phone) || phone.trim();
+  localStorage.setItem(RESIDENT_PHONE, normalized);
 }
 
 export function getResidentPhone(): string | null {

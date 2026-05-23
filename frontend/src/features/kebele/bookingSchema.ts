@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ethiopianPhoneZod } from '../../lib/ethiopianPhone';
 import { buildEmptyResponsesDefaults, buildResponsesZodSchema } from './dynamicFormSchema';
 import type { ServiceFormFieldDef } from './formTypes';
 
@@ -10,11 +11,7 @@ export { parseFieldOptions } from './formTypes';
 
 const bookingBaseSchema = z.object({
   fullName: z.string().trim().min(2, 'Full name is required'),
-  phone: z
-    .string()
-    .trim()
-    .min(8, 'Phone is required')
-    .regex(/^[0-9+\-\s()]+$/, 'Enter a valid phone number'),
+  phone: ethiopianPhoneZod,
   gender: GENDER_ENUM,
   serviceId: z.coerce.number().positive('Select a service'),
   slotStart: z.string().regex(/^\d{2}:\d{2}$/, 'Pick a time slot'),

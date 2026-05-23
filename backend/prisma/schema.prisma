@@ -91,7 +91,6 @@ model Service {
   /// Denormalized count of active staff assigned to this service; maintained by application logic
   staffCount           Int        @default(0)
   requiredDocuments    String?
-  hasTeyazeRequirement Boolean    @default(false)
   departmentId         Int
   department           Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   appointments         Appointment[]
@@ -154,7 +153,8 @@ model Appointment {
   documentUrl String?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
-  feedback    Feedback?
+  feedbackId  Int?      @unique
+  feedback    Feedback? @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
   formSubmission ServiceFormSubmission?
   uploadedFiles UploadedFile[]
 
@@ -213,14 +213,14 @@ model UploadedFile {
   @@map("uploaded_files")
 }
 
+/// Anonymous feedback — only rating and comment are stored (no resident PII).
 model Feedback {
-  id            Int         @id @default(autoincrement())
-  appointmentId Int         @unique
-  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  rating        Int?
-  comment       String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id          Int          @id @default(autoincrement())
+  rating      Int
+  comment     String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  appointment Appointment?
 }
 
 model Houseowner {

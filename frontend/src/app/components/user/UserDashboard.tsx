@@ -21,7 +21,7 @@ export function UserDashboard() {
     if (!ph) return;
     void (async () => {
       const { res, body } = await apiFetch(
-        `/api/user/appointments?phone=${encodeURIComponent(ph)}`,
+        `/api/resident/my-appointments?phone=${encodeURIComponent(ph)}`,
         { skipAuth: true }
       );
       if (res.ok && body?.success && Array.isArray(body.data)) {

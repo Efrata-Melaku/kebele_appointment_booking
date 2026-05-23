@@ -68,7 +68,6 @@ const serviceStep1Schema = z.object({
   name: z.string().min(2, 'At least 2 characters').max(100, 'Max 100 characters'),
   description: z.string().max(500).optional().or(z.literal('')),
   durationInMinutes: z.coerce.number().int().min(1).max(480),
-  hasTeyazeRequirement: z.boolean(),
   requiredDocuments: z.string().max(500).optional().or(z.literal('')),
 });
 
@@ -129,7 +128,6 @@ export function ServicesManagement() {
       name: '',
       description: '',
       durationInMinutes: 30,
-      hasTeyazeRequirement: false,
       requiredDocuments: '',
     },
   });
@@ -227,7 +225,6 @@ export function ServicesManagement() {
       name: '',
       description: '',
       durationInMinutes: 30,
-      hasTeyazeRequirement: false,
       requiredDocuments: '',
     });
     setSvcSuccess('');
@@ -275,7 +272,6 @@ export function ServicesManagement() {
         name: values.name.trim(),
         description: values.description?.trim() || undefined,
         durationInMinutes: values.durationInMinutes,
-        hasTeyazeRequirement: values.hasTeyazeRequirement,
         requiredDocuments: values.requiredDocuments?.trim() || undefined,
         departmentId: values.departmentId,
       });
@@ -590,18 +586,6 @@ export function ServicesManagement() {
                           <Input {...field} type="number" min={1} max={480} disabled={svcSubmitting} />
                         </FormControl>
                         <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={svcForm.control}
-                    name="hasTeyazeRequirement"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center gap-2 space-y-0">
-                        <FormControl>
-                          <Checkbox checked={field.value} onCheckedChange={field.onChange} disabled={svcSubmitting} />
-                        </FormControl>
-                        <FormLabel className="font-normal">Teyazo required</FormLabel>
                       </FormItem>
                     )}
                   />

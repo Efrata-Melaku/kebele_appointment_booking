@@ -9,6 +9,8 @@ const {
   addBookingServiceSchema,
   availableSlotsQuerySchema,
   updateAppointmentFormResponsesSchema,
+  myAppointmentsQuerySchema,
+  getAppointmentByRefQuerySchema,
 } = require('../../utils/validators');
 
 const router = express.Router();
@@ -28,7 +30,11 @@ router.post(
   appointmentController.createAppointment
 );
 
-router.get('/', appointmentController.getUserAppointments);
+router.get(
+  '/',
+  validate.validateQuery(myAppointmentsQuerySchema),
+  appointmentController.getUserAppointments
+);
 
 router.post(
   '/:appointmentRef/services',
@@ -46,7 +52,11 @@ router.put(
   appointmentController.updateAppointmentFormResponses
 );
 
-router.get('/:appointmentRef', appointmentController.getAppointmentByRef);
+router.get(
+  '/:appointmentRef',
+  validate.validateQuery(getAppointmentByRefQuerySchema),
+  appointmentController.getAppointmentByRef
+);
 
 router.put(
   '/:appointmentRef',

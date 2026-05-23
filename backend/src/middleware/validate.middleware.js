@@ -48,7 +48,11 @@ const validate = (schema) => {
 
 const validateQuery = (schema) => {
   return (req, res, next) => {
-    const { error } = schema.validate(req.query, { abortEarly: false });
+    const { error, value } = schema.validate(req.query, {
+      abortEarly: false,
+      convert: true,
+      stripUnknown: true,
+    });
 
     if (error) {
       const errors = error.details.map(detail => ({
@@ -61,6 +65,10 @@ const validateQuery = (schema) => {
         error: 'Validation failed',
         details: errors,
       });
+    }
+
+    if (value) {
+      req.query = value;
     }
 
     next();

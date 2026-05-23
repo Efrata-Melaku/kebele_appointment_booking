@@ -14,6 +14,7 @@ const adminTimeSlotRoutes = require('./routes/admin/timeslot.routes');
 const adminStaffRoutes = require('./routes/admin/staff.routes');
 const adminScheduleRoutes = require('./routes/admin/schedule.routes');
 const adminDashboardRoutes = require('./routes/admin/dashboard.routes');
+const adminAppointmentRoutes = require('./routes/admin/appointment.routes');
 const adminFeedbackRoutes = require('./routes/admin/feedback.routes');
 const adminFormFieldRoutes = require('./routes/admin/formField.routes');
 const staffAppointmentRoutes = require('./routes/staff/appointmentStatus.routes');
@@ -23,6 +24,7 @@ const userBookingRoutes = require('./routes/user/booking.routes');
 const userServiceRoutes = require('./routes/user/service.routes');
 const userTimeSlotRoutes = require('./routes/user/timeslot.routes');
 const userUploadRoutes = require('./routes/user/upload.routes');
+const residentRoutes = require('./routes/user/resident.routes');
 
 const errorHandler = require('./middleware/error.middleware');
 const protect = require('./middleware/auth.middleware');
@@ -64,6 +66,7 @@ app.use('/api/admin/timeslots', protect, authorize(USER_ROLES.ADMIN), adminTimeS
 app.use('/api/admin/staff', protect, authorize(USER_ROLES.ADMIN), adminStaffRoutes);
 app.use('/api/admin/schedule', protect, authorize(USER_ROLES.ADMIN), adminScheduleRoutes);
 app.use('/api/admin/dashboard', protect, authorize(USER_ROLES.ADMIN), adminDashboardRoutes);
+app.use('/api/admin/appointments', protect, authorize(USER_ROLES.ADMIN), adminAppointmentRoutes);
 app.use('/api/admin/feedback', protect, authorize(USER_ROLES.ADMIN), adminFeedbackRoutes);
 app.use('/api/admin/form-fields', protect, authorize(USER_ROLES.ADMIN), adminFormFieldRoutes);
 
@@ -74,6 +77,7 @@ app.use('/api/user/booking', userBookingRoutes);
 app.use('/api/user/services', userServiceRoutes);
 app.use('/api/user/timeslots', userTimeSlotRoutes);
 app.use('/api/user/appointments', userAppointmentRoutes);
+app.use('/api/resident', residentRoutes);
 app.use('/api/user/feedback', userFeedbackRoutes);
 
 app.use('*', (req, res) => {

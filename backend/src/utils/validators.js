@@ -1,7 +1,29 @@
 const Joi = require('joi');
 const { GENDER_OPTIONS } = require('../config/constants');
+const {
+  normalizeEthiopianPhone,
+  ETHIOPIAN_PHONE_ERROR,
+} = require('./ethiopianPhone');
 
 const timePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
+/** Joi string that normalizes to +2519XXXXXXXX / +2517XXXXXXXX */
+function ethiopianPhoneField(required = true) {
+  let schema = Joi.string().trim();
+  if (!required) {
+    schema = schema.allow('', null).optional();
+  } else {
+    schema = schema.required();
+  }
+  return schema.custom((value, helpers) => {
+    if (!required && (value === '' || value == null)) return value;
+    const normalized = normalizeEthiopianPhone(value);
+    if (!normalized) {
+      return helpers.message({ custom: ETHIOPIAN_PHONE_ERROR });
+    }
+    return normalized;
+  }, 'Ethiopian phone validation');
+}
 
 // Auth validators
 const loginSchema = Joi.object({
@@ -39,7 +61,6 @@ const createServiceSchema = Joi.object({
   description: Joi.string().max(500).allow('', null).optional(),
   durationInMinutes: Joi.number().integer().min(1).max(480).required(),
   requiredDocuments: Joi.string().allow('', null).optional(),
-  hasTeyazeRequirement: Joi.boolean().default(false),
   departmentId: Joi.number().integer().required(),
 });
 
@@ -133,7 +154,7 @@ const searchFormResponsesSchema = Joi.object({
 const dynamicFormResponsesJson = Joi.string().max(100000).allow('', null).optional();
 
 const updateAppointmentFormResponsesSchema = Joi.object({
-  phone: Joi.string().trim().pattern(/^[0-9+\-\s()]+$/).required(),
+  phone: ethiopianPhoneField(true),
   appointmentItemId: Joi.alternatives()
     .try(Joi.number().integer().positive(), Joi.string().pattern(/^\d+$/))
     .optional(),
@@ -144,7 +165,7 @@ const updateAppointmentFormResponsesSchema = Joi.object({
 // Appointment validators
 const createAppointmentSchema = Joi.object({
   fullName: Joi.string().trim().min(2).max(100).required(),
-  phone: Joi.string().trim().pattern(/^[0-9+\-\s()]+$/).required(),
+  phone: ethiopianPhoneField(true),
   gender: Joi.string().valid(...Object.values(GENDER_OPTIONS)).required(),
   serviceId: Joi.alternatives()
     .try(Joi.number().integer().positive(), Joi.string().pattern(/^\d+$/))
@@ -156,33 +177,77 @@ const createAppointmentSchema = Joi.object({
 });
 
 const rescheduleAppointmentSchema = Joi.object({
-  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
+  phone: ethiopianPhoneField(true),
   ...slotBookingFields,
   appointmentItemId: Joi.number().integer().positive().optional(),
 });
 
 const cancelAppointmentQuerySchema = Joi.object({
-  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
+  phone: ethiopianPhoneField(true),
   appointmentItemId: Joi.number().integer().positive().optional(),
 });
 
 const addBookingServiceSchema = Joi.object({
-  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
+  phone: ethiopianPhoneField(true),
   serviceId: Joi.number().integer().required(),
   ...slotBookingFields,
 });
 
 // Feedback validators
 const createFeedbackSchema = Joi.object({
-  appointmentId: Joi.number().integer().required(),
-  rating: Joi.number().integer().min(1).max(5).optional(),
+  phone: ethiopianPhoneField(true),
+  appointmentId: Joi.number().integer().positive().required(),
+  rating: Joi.number().integer().min(1).max(5).required(),
   comment: Joi.string().max(1000).allow('', null).optional(),
-}).or('rating', 'comment');
+});
 
 const updateFeedbackSchema = Joi.object({
   rating: Joi.number().integer().min(1).max(5).optional(),
   comment: Joi.string().max(1000).allow('', null).optional(),
-}).or('rating', 'comment');
+}).min(1);
+
+const residentCreateFeedbackSchema = Joi.object({
+  phone: ethiopianPhoneField(true),
+  appointmentId: Joi.number().integer().positive().required(),
+  rating: Joi.number().integer().min(1).max(5).required(),
+  comment: Joi.string().max(1000).allow('', null).optional(),
+});
+
+const residentUpdateFeedbackSchema = Joi.object({
+  phone: ethiopianPhoneField(true),
+  rating: Joi.number().integer().min(1).max(5).optional(),
+  comment: Joi.string().max(1000).allow('', null).optional(),
+}).min(2);
+
+const residentFeedbackQuerySchema = Joi.object({
+  phone: ethiopianPhoneField(true),
+});
+
+const adminAppointmentsQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  pageSize: Joi.number().integer().min(1).max(100).default(20),
+  search: Joi.string().trim().max(200).optional(),
+  departmentId: Joi.number().integer().positive().optional(),
+  serviceId: Joi.number().integer().positive().optional(),
+  status: Joi.string()
+    .valid('PENDING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NOT_SERVED')
+    .optional(),
+  dateFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  residentName: Joi.string().trim().max(100).optional(),
+  phone: Joi.string().trim().max(30).optional(),
+  appointmentNumber: Joi.string().trim().max(64).optional(),
+});
+
+const adminFeedbackQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  pageSize: Joi.number().integer().min(1).max(100).default(20),
+  departmentId: Joi.number().integer().positive().optional(),
+  serviceId: Joi.number().integer().positive().optional(),
+  rating: Joi.number().integer().min(1).max(5).optional(),
+  dateFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
 
 const updateAppointmentStatusSchema = Joi.object({
   status: Joi.string()
@@ -213,6 +278,15 @@ const officeOverrideSchema = Joi.object({
   lunchEnd: Joi.string().pattern(timePattern).allow(null, '').optional(),
 });
 
+const myAppointmentsQuerySchema = Joi.object({
+  phone: ethiopianPhoneField(true),
+  appointmentNumber: Joi.string().trim().max(64).optional(),
+});
+
+const getAppointmentByRefQuerySchema = Joi.object({
+  phone: ethiopianPhoneField(true),
+});
+
 const serviceOverrideSchema = Joi.object({
   date: Joi.date().required(),
   serviceId: Joi.number().integer().positive().required(),
@@ -240,8 +314,15 @@ module.exports = {
   rescheduleAppointmentSchema,
   cancelAppointmentQuerySchema,
   addBookingServiceSchema,
+  myAppointmentsQuerySchema,
+  getAppointmentByRefQuerySchema,
   createFeedbackSchema,
   updateFeedbackSchema,
+  residentCreateFeedbackSchema,
+  residentUpdateFeedbackSchema,
+  residentFeedbackQuerySchema,
+  adminAppointmentsQuerySchema,
+  adminFeedbackQuerySchema,
   updateAppointmentStatusSchema,
   workScheduleTemplateSchema,
   officeOverrideSchema,

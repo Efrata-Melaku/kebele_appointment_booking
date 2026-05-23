@@ -264,11 +264,12 @@ function FileFieldInput({
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Upload failed';
       setUploadErr(
-        msg.includes('503') || msg.toLowerCase().includes('cloudinary') || msg.toLowerCase().includes('not configured')
-          ? 'File upload is not set up on the server. Ask the administrator to configure Cloudinary in backend/.env.'
+        msg.includes('503') || msg.toLowerCase().includes('not configured')
+          ? 'File upload is not set up on the server. Set CLOUDINARY_CLOUD_NAME to your dashboard cloud name (not "Root") in backend/.env, save the file, and restart the server.'
           : msg
       );
-      onChange(undefined);
+      // Keep the File so booking can still send it as multipart if pre-upload failed.
+      onChange(file);
     } finally {
       setUploading(false);
     }

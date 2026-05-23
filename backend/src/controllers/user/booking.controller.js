@@ -14,7 +14,6 @@ class BookingController {
           durationInMinutes: true,
           staffCount: true,
           requiredDocuments: true,
-          hasTeyazeRequirement: true,
           department: { select: { name: true } },
           _count: {
             select: {
@@ -31,7 +30,6 @@ class BookingController {
         durationInMinutes: s.durationInMinutes,
         staffCount: s.staffCount,
         requiredDocuments: s.requiredDocuments,
-        hasTeyazeRequirement: s.hasTeyazeRequirement,
         departmentName: s.department?.name ?? null,
         activeFieldCount: s._count.formFields,
         bookable: s.staffCount > 0,
@@ -56,7 +54,6 @@ class BookingController {
           durationInMinutes: true,
           staffCount: true,
           requiredDocuments: true,
-          hasTeyazeRequirement: true,
           department: { select: { name: true } },
           formFields: {
             where: { isActive: true },

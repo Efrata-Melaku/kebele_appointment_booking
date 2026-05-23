@@ -36,6 +36,7 @@ export function DashboardLayout() {
   const menuItems = {
     admin: [
       { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/admin/appointments', label: 'Appointments', icon: Calendar },
       { path: '/admin/staff', label: 'Manage Staff', icon: Users },
       { path: '/admin/houseowners', label: 'Houseowner Records', icon: Home },
       { path: '/admin/limits', label: 'Slots sync', icon: Calendar },

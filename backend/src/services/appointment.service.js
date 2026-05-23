@@ -7,6 +7,10 @@ const { attachTimeSlot, attachTimeSlotMany } = require('../utils/appointmentSlot
 const slotAvailability = require('./slotAvailability.service');
 const formSubmissionService = require('./formSubmission.service');
 const dynamicFormService = require('./dynamicForm.service');
+const {
+  requireNormalizedPhone,
+  assertPhoneMatchesResident,
+} = require('../utils/ethiopianPhone');
 
 const BOOKING_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -130,7 +134,8 @@ class AppointmentService {
     formResponseRows = null,
     fileMetaByFieldId = {}
   ) {
-    const { fullName, phone, gender } = appointmentData;
+    const { fullName, gender } = appointmentData;
+    const phone = requireNormalizedPhone(appointmentData.phone);
     const { serviceId, slotDate, slotStart } = parseBookingSlot(appointmentData);
 
     const resolved = await slotAvailability.resolveBookableSlot(serviceId, slotDate, slotStart);
@@ -217,6 +222,8 @@ class AppointmentService {
       throw new Error('timeSlotId is no longer supported; use slotDate and slotStart');
     }
 
+    const normalizedPhone = requireNormalizedPhone(phone);
+
     return prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.findUnique({
         where: { id: appointmentId },
@@ -229,9 +236,7 @@ class AppointmentService {
         throw new Error('Appointment not found');
       }
 
-      if (appointment.group.resident.phone !== phone) {
-        throw new Error('Verification failed for this appointment');
-      }
+      assertPhoneMatchesResident(appointment.group.resident.phone, normalizedPhone);
 
       if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
         throw new Error('Cannot reschedule a cancelled appointment');
@@ -293,6 +298,8 @@ class AppointmentService {
   }
 
   async cancelAppointmentById(appointmentId, phone) {
+    const normalizedPhone = requireNormalizedPhone(phone);
+
     return prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.findUnique({
         where: { id: appointmentId },
@@ -305,9 +312,7 @@ class AppointmentService {
         throw new Error('Appointment not found');
       }
 
-      if (appointment.group.resident.phone !== phone) {
-        throw new Error('Verification failed for this appointment');
-      }
+      assertPhoneMatchesResident(appointment.group.resident.phone, normalizedPhone);
 
       if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
         throw new Error('Appointment is already cancelled');
@@ -507,12 +512,20 @@ class AppointmentService {
     };
   }
 
-  async getAppointmentByRef(ref) {
+  async getAppointmentByRef(ref, phone) {
+    return this.getAppointmentByRefForResident(ref, phone);
+  }
+
+  async getAppointmentByRefForResident(ref, phone) {
+    const normalizedPhone = requireNormalizedPhone(phone);
+
     if (isAppointmentNumberRef(ref)) {
       const group = await this.getAppointmentGroupBundleByNumber(ref.trim());
       if (!group) {
         throw new Error('Appointment not found');
       }
+      assertPhoneMatchesResident(group.resident.phone, normalizedPhone);
+
       const items = await formSubmissionService.attachSubmissionsToMany(
         group.appointments.map((a) => attachTimeSlot({ ...a, group }))
       );
@@ -532,6 +545,8 @@ class AppointmentService {
       if (!apt) {
         throw new Error('Appointment not found');
       }
+      assertPhoneMatchesResident(apt.group.resident.phone, normalizedPhone);
+
       const withResponses = await formSubmissionService.attachSubmissionToAppointment(
         attachTimeSlot(apt)
       );
@@ -547,6 +562,8 @@ class AppointmentService {
     formResponseRows,
     fileMetaByFieldId = {}
   ) {
+    const normalizedPhone = requireNormalizedPhone(phone);
+
     return prisma.$transaction(async (tx) => {
       const appointment = await tx.appointment.findUnique({
         where: { id: appointmentId },
@@ -559,9 +576,7 @@ class AppointmentService {
         throw new Error('Appointment not found');
       }
 
-      if (appointment.group.resident.phone !== phone) {
-        throw new Error('Verification failed for this appointment');
-      }
+      assertPhoneMatchesResident(appointment.group.resident.phone, normalizedPhone);
 
       if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
         throw new Error('Cannot edit a cancelled appointment');
@@ -629,6 +644,8 @@ class AppointmentService {
   }
 
   async cancelByAppointmentNumber(appointmentNumber, phone, appointmentItemId) {
+    const normalizedPhone = requireNormalizedPhone(phone);
+
     if (appointmentItemId != null) {
       const apt = await prisma.appointment.findFirst({
         where: {
@@ -642,15 +659,14 @@ class AppointmentService {
       if (!apt) {
         throw new Error('Appointment not found');
       }
-      if (apt.group.resident.phone !== phone) {
-        throw new Error('Verification failed for this appointment');
-      }
-      return this.cancelAppointmentById(apt.id, phone);
+      assertPhoneMatchesResident(apt.group.resident.phone, normalizedPhone);
+      return this.cancelAppointmentById(apt.id, normalizedPhone);
     }
-    return this.cancelAppointmentGroupByNumber(appointmentNumber, phone);
+    return this.cancelAppointmentGroupByNumber(appointmentNumber, normalizedPhone);
   }
 
   async cancelAppointmentGroupByNumber(appointmentNumber, phone) {
+    const normalizedPhone = requireNormalizedPhone(phone);
     return prisma.$transaction(async (tx) => {
       const group = await tx.appointmentGroup.findUnique({
         where: { appointmentNumber },
@@ -666,9 +682,7 @@ class AppointmentService {
         throw new Error('Appointment not found');
       }
 
-      if (group.resident.phone !== phone) {
-        throw new Error('Verification failed for this appointment');
-      }
+      assertPhoneMatchesResident(group.resident.phone, normalizedPhone);
 
       for (const apt of group.appointments) {
         await tx.appointment.update({
@@ -682,6 +696,7 @@ class AppointmentService {
   }
 
   async rescheduleByAppointmentNumber(appointmentNumber, { phone, slotDate, slotStart, appointmentItemId }) {
+    const normalizedPhone = requireNormalizedPhone(phone);
     const group = await prisma.appointmentGroup.findUnique({
       where: { appointmentNumber },
       include: {
@@ -696,9 +711,7 @@ class AppointmentService {
       throw new Error('Appointment not found');
     }
 
-    if (group.resident.phone !== phone) {
-      throw new Error('Verification failed for this appointment');
-    }
+    assertPhoneMatchesResident(group.resident.phone, normalizedPhone);
 
     let line = group.appointments[0];
     if (appointmentItemId != null) {
@@ -712,10 +725,15 @@ class AppointmentService {
       throw new Error('appointmentItemId is required when the booking has multiple active services');
     }
 
-    return this.rescheduleAppointment(line.id, { phone, slotDate, slotStart });
+    return this.rescheduleAppointment(line.id, {
+      phone: normalizedPhone,
+      slotDate,
+      slotStart,
+    });
   }
 
   async addServiceToBooking(appointmentNumber, { phone, serviceId, slotDate, slotStart, documentUrl }) {
+    const normalizedPhone = requireNormalizedPhone(phone);
     const serviceIdNum = Number(serviceId);
     const resolved = await slotAvailability.resolveBookableSlot(serviceIdNum, slotDate, slotStart);
 
@@ -733,9 +751,7 @@ class AppointmentService {
       throw new Error('Appointment not found');
     }
 
-    if (group.resident.phone !== phone) {
-      throw new Error('Verification failed for this appointment');
-    }
+    assertPhoneMatchesResident(group.resident.phone, normalizedPhone);
 
     const already = group.appointments.some((a) => a.serviceId === serviceIdNum);
     if (already) {
