@@ -51,6 +51,14 @@ function endOfLocalMonth(date = new Date()) {
   return endOfLocalDay(new Date(date.getFullYear(), date.getMonth() + 1, 0));
 }
 
+function startOfLocalYear(date = new Date()) {
+  return startOfLocalDay(new Date(date.getFullYear(), 0, 1));
+}
+
+function endOfLocalYear(date = new Date()) {
+  return endOfLocalDay(new Date(date.getFullYear(), 11, 31));
+}
+
 /**
  * Build a Prisma-compatible range for slotDate / createdAt filters.
  * @param {object} filters
@@ -70,6 +78,10 @@ function resolveDateFilterRange(filters = {}) {
 
   if (preset === 'month') {
     return { gte: startOfLocalMonth(), lte: endOfLocalMonth() };
+  }
+
+  if (preset === 'year') {
+    return { gte: startOfLocalYear(), lte: endOfLocalYear() };
   }
 
   if (filters.slotDate) {
@@ -94,6 +106,21 @@ function resolveDateFilterRange(filters = {}) {
   return null;
 }
 
+/**
+ * Human-readable label for the active report filter.
+ */
+function describeDateFilter(filters = {}) {
+  const preset = filters.datePreset;
+  if (preset === 'today') return 'Today';
+  if (preset === 'week') return 'This week';
+  if (preset === 'month') return 'This month';
+  if (preset === 'year') return 'This year';
+  if (filters.dateFrom && filters.dateTo) return `${filters.dateFrom} – ${filters.dateTo}`;
+  if (filters.dateFrom) return `From ${filters.dateFrom}`;
+  if (filters.dateTo) return `Until ${filters.dateTo}`;
+  return 'All time';
+}
+
 module.exports = {
   parseYmd,
   startOfLocalDay,
@@ -102,5 +129,8 @@ module.exports = {
   endOfLocalWeek,
   startOfLocalMonth,
   endOfLocalMonth,
+  startOfLocalYear,
+  endOfLocalYear,
   resolveDateFilterRange,
+  describeDateFilter,
 };
