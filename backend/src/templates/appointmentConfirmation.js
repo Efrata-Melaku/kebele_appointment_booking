@@ -114,6 +114,54 @@ function buildCancellationHtml({ residentName, appointmentNumber, serviceName })
   return emailLayout('Appointment Cancelled', body);
 }
 
+function buildStatusHtml({
+  title,
+  residentName,
+  appointmentNumber,
+  serviceName,
+  appointmentDate,
+  appointmentTime,
+  status,
+  intro,
+}) {
+  const body = `
+    <p style="margin:0 0 16px;font-size:16px;">Hello <strong>${residentName}</strong>,</p>
+    <p style="margin:0 0 20px;">${intro}</p>
+    ${appointmentNumberBlock(appointmentNumber)}
+    ${detailRows([
+      ['Service', serviceName],
+      ['Date', formatDisplayDate(appointmentDate)],
+      ['Time', formatDisplayTime(appointmentTime)],
+      ['Status', formatStatus(status)],
+    ])}
+    <p style="margin:24px 0 0;">Thank you.</p>`;
+  return emailLayout(title, body);
+}
+
+function buildCompletedHtml(data) {
+  return buildStatusHtml({
+    title: 'Appointment Completed',
+    intro: 'Your appointment has been marked as completed.',
+    ...data,
+  });
+}
+
+function buildNotServedHtml(data) {
+  return buildStatusHtml({
+    title: 'Appointment Not Served',
+    intro: 'Your appointment was marked as not served because you did not attend at the scheduled time.',
+    ...data,
+  });
+}
+
+function buildRescheduledStatusHtml(data) {
+  return buildStatusHtml({
+    title: 'Appointment Rescheduled',
+    intro: 'Your appointment has been rescheduled.',
+    ...data,
+  });
+}
+
 function buildReminderHtml({
   residentName,
   appointmentNumber,
@@ -139,4 +187,7 @@ module.exports = {
   buildUpdateHtml,
   buildCancellationHtml,
   buildReminderHtml,
+  buildCompletedHtml,
+  buildNotServedHtml,
+  buildRescheduledStatusHtml,
 };

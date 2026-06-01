@@ -89,6 +89,22 @@ New Time:
 ${formatDisplayTime(time)}`;
 }
 
+function buildCompletedMessage({ appointmentNumber, serviceName, date, time }) {
+  return `Your appointment ${appointmentNumber} has been marked as Completed.
+
+Service: ${serviceName || 'Kebele Service'}
+Date: ${formatDisplayDate(date)}
+Time: ${formatDisplayTime(time)}`;
+}
+
+function buildNotServedMessage({ appointmentNumber, serviceName, date, time }) {
+  return `Your appointment ${appointmentNumber} has been marked as Not Served.
+
+Service: ${serviceName || 'Kebele Service'}
+Date: ${formatDisplayDate(date)}
+Time: ${formatDisplayTime(time)}`;
+}
+
 // ---------------------------------------------------------------------------
 // Logging
 // ---------------------------------------------------------------------------
@@ -239,6 +255,24 @@ async function sendAppointmentReschedule(data) {
   return sendSMS(phone, message);
 }
 
+async function sendAppointmentCompleted(data) {
+  const { phone, appointmentNumber, serviceName, date, time } = data || {};
+  if (!validateEthiopianPhone(phone)) {
+    return { success: false, message: PHONE_ERROR, skipped: true };
+  }
+  const message = buildCompletedMessage({ appointmentNumber, serviceName, date, time });
+  return sendSMS(phone, message);
+}
+
+async function sendAppointmentNotServed(data) {
+  const { phone, appointmentNumber, serviceName, date, time } = data || {};
+  if (!validateEthiopianPhone(phone)) {
+    return { success: false, message: PHONE_ERROR, skipped: true };
+  }
+  const message = buildNotServedMessage({ appointmentNumber, serviceName, date, time });
+  return sendSMS(phone, message);
+}
+
 /** @deprecated Use sendAppointmentReschedule */
 async function sendAppointmentUpdate(phone, appointmentNumber, serviceName, date, time) {
   return sendAppointmentReschedule({
@@ -261,12 +295,16 @@ module.exports = {
   sendAppointmentReminder,
   sendAppointmentCancellation,
   sendAppointmentReschedule,
+  sendAppointmentCompleted,
+  sendAppointmentNotServed,
   sendAppointmentUpdate,
   sendToEthiopianNumber,
   buildConfirmationMessage,
   buildReminderMessage,
   buildCancellationMessage,
   buildRescheduleMessage,
+  buildCompletedMessage,
+  buildNotServedMessage,
   formatDisplayDate,
   formatDisplayTime,
 };

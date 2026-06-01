@@ -10,9 +10,13 @@ import {
   Calendar,
   ClipboardList,
   Paperclip,
-  CheckCircle2,
+  History,
+  Pencil,
 } from 'lucide-react';
 import { apiFetch, resolveUploadUrl } from '../../../lib/api';
+import { statusBadgeClass, statusLabel, type StaffStatusTarget } from '../../../lib/staffAppointmentStatus';
+import { Button } from '../ui/button';
+import { StaffStatusUpdateModal } from './StaffStatusUpdateModal';
 
 type FormResponseItem = {
   fieldLabel: string;
@@ -46,19 +50,21 @@ type AppointmentDetail = {
     houseNumber?: string | null;
   } | null;
   service: {
+    id?: number;
     name: string;
     department?: { name: string } | null;
   } | null;
   formResponses: FormResponseItem[];
   uploadedFiles: UploadedFile[];
+  statusHistory?: {
+    id: number;
+    previousStatus?: string | null;
+    newStatus: string;
+    note?: string | null;
+    changedByName?: string;
+    createdAt: string;
+  }[];
 };
-
-const STATUS_OPTIONS = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'rescheduled', label: 'Rescheduled' },
-  { value: 'not_served', label: 'Not served' },
-] as const;
 
 function isImageFile(name: string, fileType?: string | null) {
   if (fileType?.startsWith('image/')) return true;
@@ -118,8 +124,8 @@ export function StaffAppointmentDetails() {
   const [detail, setDetail] = useState<AppointmentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [statusBusy, setStatusBusy] = useState(false);
-  const [statusMsg, setStatusMsg] = useState('');
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [statusTarget, setStatusTarget] = useState<StaffStatusTarget | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLabel, setPreviewLabel] = useState('');
 
@@ -135,7 +141,18 @@ export function StaffAppointmentDetails() {
         if (res.status === 404) throw new Error('Appointment not found');
         throw new Error(msg);
       }
-      setDetail(body.data as AppointmentDetail);
+      const data = body.data as AppointmentDetail;
+      setDetail(data);
+      if (data.service?.id) {
+        setStatusTarget({
+          id: data.appointment.id,
+          serviceId: data.service.id,
+          appointmentNumber: data.appointment.appointmentNumber,
+          status: data.appointment.status,
+          residentName: data.resident?.fullName || '—',
+          serviceName: data.service.name,
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Load failed');
     } finally {
@@ -146,29 +163,6 @@ export function StaffAppointmentDetails() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function updateStatus(next: string) {
-    if (!detail?.appointment.id) return;
-    setStatusBusy(true);
-    setStatusMsg('');
-    setError('');
-    try {
-      const { res, body } = await apiFetch(`/api/staff/appointments/${detail.appointment.id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: next }),
-      });
-      if (!res.ok || !body?.success) {
-        throw new Error((body as { error?: string })?.error || 'Status update failed');
-      }
-      setStatusMsg(`Status updated to ${next.replace('_', ' ')}.`);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Status update failed');
-    } finally {
-      setStatusBusy(false);
-    }
-  }
 
   function openFile(file: UploadedFile) {
     const url = resolveUploadUrl(file.fileUrl);
@@ -196,8 +190,6 @@ export function StaffAppointmentDetails() {
     a.remove();
   }
 
-  const currentStatus = (detail?.appointment.status || '').toLowerCase();
-
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-gray-500 py-12">
@@ -219,7 +211,7 @@ export function StaffAppointmentDetails() {
 
   if (!detail) return null;
 
-  const { appointment, resident, service, formResponses, uploadedFiles } = detail;
+  const { appointment, resident, service, formResponses, uploadedFiles, statusHistory } = detail;
   const nonFileResponses = formResponses.filter((r) => r.fieldType !== 'file');
 
   return (
@@ -237,32 +229,26 @@ export function StaffAppointmentDetails() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 bg-white rounded-xl border border-gray-100 px-4 py-3 shadow-sm">
-          <label htmlFor="status-select" className="text-sm text-gray-600">
-            Update status
-          </label>
-          <select
-            id="status-select"
-            disabled={statusBusy}
-            value={currentStatus}
-            onChange={(e) => void updateStatus(e.target.value)}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white min-w-[140px]"
+          <span
+            className={`px-3 py-1 rounded-full text-sm font-medium ${statusBadgeClass(appointment.status)}`}
           >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          {statusBusy ? <Loader2 className="w-4 h-4 animate-spin text-gray-400" /> : null}
+            {statusLabel(appointment.status)}
+          </span>
+          {statusTarget ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              onClick={() => setStatusOpen(true)}
+            >
+              <Pencil className="h-4 w-4" />
+              Change status
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {statusMsg ? (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          {statusMsg}
-        </div>
-      ) : null}
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       ) : null}
@@ -290,6 +276,27 @@ export function StaffAppointmentDetails() {
             { label: 'Status', value: appointment.status },
           ]}
         />
+      </SectionCard>
+
+      <SectionCard title="Status history" icon={History}>
+        {!statusHistory?.length ? (
+          <p className="text-sm text-gray-500">No status changes recorded yet.</p>
+        ) : (
+          <ul className="space-y-3">
+            {statusHistory.map((row) => (
+              <li key={row.id} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm">
+                <p className="font-medium text-gray-900">
+                  {row.previousStatus ? statusLabel(row.previousStatus) : '—'} →{' '}
+                  {statusLabel(row.newStatus)}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {row.changedByName || 'System'} · {new Date(row.createdAt).toLocaleString()}
+                </p>
+                {row.note ? <p className="mt-2 text-gray-700">{row.note}</p> : null}
+              </li>
+            ))}
+          </ul>
+        )}
       </SectionCard>
 
       <SectionCard title="Submitted form data" icon={ClipboardList}>
@@ -359,6 +366,13 @@ export function StaffAppointmentDetails() {
           </div>
         )}
       </SectionCard>
+
+      <StaffStatusUpdateModal
+        open={statusOpen}
+        onOpenChange={setStatusOpen}
+        target={statusTarget}
+        onUpdated={() => void load()}
+      />
 
       {previewUrl ? (
         <div

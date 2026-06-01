@@ -11,6 +11,9 @@ const { attachTimeSlot, attachTimeSlotMany } = require('../utils/appointmentSlot
 const slotAvailability = require('./slotAvailability.service');
 const emailService = require('./email.service');
 const formSubmissionService = require('./formSubmission.service');
+const statusHistoryModel = require('../models/appointmentStatusHistory.model');
+const smsService = require('./sms.service');
+const appointmentEmailService = require('./appointmentEmail.service');
 const dynamicFormService = require('./dynamicForm.service');
 const {
   requireNormalizedPhone,
@@ -44,6 +47,19 @@ const appointmentInclude = {
     },
   },
   feedback: true,
+};
+
+const staffAppointmentInclude = {
+  group: {
+    include: {
+      resident: true,
+    },
+  },
+  service: {
+    include: {
+      department: true,
+    },
+  },
 };
 
 const appointmentCreateSelect = {
@@ -177,6 +193,79 @@ function buildAdminWhere(filters) {
     ];
   }
 
+  return where;
+}
+
+function normalizeStaffStatusInput(status) {
+  const raw = String(status).trim().toUpperCase().replace(/-/g, '_');
+  const map = {
+    PENDING: APPOINTMENT_STATUS.PENDING,
+    COMPLETED: APPOINTMENT_STATUS.COMPLETED,
+    RESCHEDULED: APPOINTMENT_STATUS.RESCHEDULED,
+    NOT_SERVED: APPOINTMENT_STATUS.NOT_SERVED,
+    CANCELLED: APPOINTMENT_STATUS.CANCELLED,
+  };
+  return map[raw] || null;
+}
+
+function mapStatusHistoryRows(rows) {
+  return rows.map((row) => ({
+    id: row.id,
+    previousStatus: row.previousStatus,
+    newStatus: row.newStatus,
+    note: row.note,
+    changedByUserId: row.changedByUserId,
+    changedByName: row.changedBy?.name ?? (row.changedByUserId ? `Staff #${row.changedByUserId}` : 'System'),
+    createdAt: row.createdAt,
+  }));
+}
+
+function mapStaffListRow(apt) {
+  const flat = attachTimeSlot(apt);
+  return {
+    id: flat.id,
+    serviceId: flat.serviceId,
+    appointmentNumber: flat.group?.appointmentNumber,
+    residentName: flat.group?.resident?.fullName ?? '',
+    phone: flat.group?.resident?.phone ?? '',
+    serviceName: flat.service?.name ?? '',
+    departmentName: flat.service?.department?.name ?? '',
+    status: flat.status,
+    timeSlot: flat.timeSlot,
+    slotDate: flat.slotDate,
+    slotStartTime: flat.slotStartTime,
+    slotEndTime: flat.slotEndTime,
+    createdAt: flat.createdAt,
+    resident: flat.group?.resident
+      ? { fullName: flat.group.resident.fullName, phone: flat.group.resident.phone }
+      : null,
+    service: flat.service
+      ? {
+          name: flat.service.name,
+          department: flat.service.department ? { name: flat.service.department.name } : null,
+        }
+      : null,
+  };
+}
+
+function buildStaffAppointmentWhere(serviceIds, query = {}) {
+  const where = { serviceId: { in: serviceIds } };
+  const slotDateRange = resolveDateFilterRange(query);
+  if (slotDateRange) {
+    where.slotDate = slotDateRange;
+  }
+  if (query.status) {
+    const raw = String(query.status).trim().toLowerCase();
+    where.status = raw === 'not_served' ? 'NOT_SERVED' : raw.toUpperCase();
+  }
+  if (query.search?.trim()) {
+    const q = query.search.trim();
+    where.OR = [
+      { group: { appointmentNumber: { contains: q } } },
+      { group: { resident: { fullName: { contains: q } } } },
+      { group: { resident: { phone: { contains: q } } } },
+    ];
+  }
   return where;
 }
 
@@ -434,7 +523,7 @@ class AppointmentService {
     const assignment = await userModel.findStaffAssignment(staffUserId, appointment.serviceId);
 
     if (!assignment) {
-      const err = new Error('You are not authorized to access this appointment');
+      const err = new Error('Unauthorized');
       err.code = 'FORBIDDEN';
       throw err;
     }
@@ -505,23 +594,216 @@ class AppointmentService {
       updatedAt: flat.updatedAt,
     };
 
+    const statusHistory = mapStatusHistoryRows(
+      await statusHistoryModel.findStatusHistoryByAppointmentId(appointmentId)
+    );
+
     return {
       appointment,
       resident,
       service,
       formResponses,
       uploadedFiles,
+      statusHistory,
     };
   }
 
-  async updateAppointmentStatus(appointmentId, status, staffUserId = null) {
-    if (staffUserId != null) {
-      await this.assertStaffCanAccessAppointment(staffUserId, appointmentId);
-    } else {
-      const appointment = await appointmentModel.findAppointmentById(appointmentId);
-      if (!appointment) {
-        throw new Error('Appointment not found');
+  async recordStatusHistory(tx, { appointmentId, previousStatus, newStatus, note, changedByUserId }) {
+    return statusHistoryModel.createStatusHistory(
+      {
+        appointmentId: Number(appointmentId),
+        previousStatus: previousStatus ?? null,
+        newStatus,
+        note: note?.trim() || null,
+        changedByUserId: changedByUserId ?? null,
+      },
+      tx
+    );
+  }
+
+  async notifyStatusChange(appointment, newStatus) {
+    const flat = withPublicNumber(attachTimeSlot(appointment));
+    const phone = flat.resident?.phone;
+    const appointmentNumber = flat.appointmentNumber;
+    const serviceName = flat.service?.name;
+    const date = flat.timeSlot?.date ?? flat.slotDate;
+    const time = flat.timeSlot?.startTime ?? flat.slotStartTime;
+
+    const notifyPayload = { phone, appointmentNumber, serviceName, date, time };
+    const status = String(newStatus).toUpperCase();
+
+    try {
+      if (status === 'COMPLETED') {
+        await smsService.sendAppointmentCompleted(notifyPayload);
+      } else if (status === 'NOT_SERVED') {
+        await smsService.sendAppointmentNotServed(notifyPayload);
+      } else       if (status === 'RESCHEDULED') {
+        await smsService.sendAppointmentReschedule(notifyPayload);
+      } else if (status === 'CANCELLED') {
+        await smsService.sendAppointmentCancellation(notifyPayload);
       }
+    } catch (smsErr) {
+      console.error('[sms] Status change notification failed:', smsErr.message);
+    }
+
+    try {
+      await appointmentEmailService.sendStatusChangeForAppointment(appointment, newStatus);
+    } catch (emailErr) {
+      console.error('[email] Status change notification failed:', emailErr.message);
+    }
+  }
+
+  async updateStaffAppointmentStatus(staffUserId, appointmentId, payload) {
+    const { status, note, slotDate, slotStart } = payload;
+    const newStatus = normalizeStaffStatusInput(status);
+    if (!newStatus) {
+      const err = new Error('Invalid status value');
+      err.code = 'VALIDATION';
+      throw err;
+    }
+
+    const allowed = Object.values(APPOINTMENT_STATUS);
+    if (!allowed.includes(newStatus)) {
+      const err = new Error('Invalid status value');
+      err.code = 'VALIDATION';
+      throw err;
+    }
+
+    await this.assertStaffCanAccessAppointment(staffUserId, appointmentId);
+
+    const existing = await appointmentModel.findAppointmentById(appointmentId, {
+      include: appointmentInclude,
+    });
+    if (!existing) {
+      const err = new Error('Appointment not found');
+      err.code = 'NOT_FOUND';
+      throw err;
+    }
+
+    if (existing.status === newStatus && newStatus !== APPOINTMENT_STATUS.RESCHEDULED) {
+      const err = new Error('Appointment already has this status');
+      err.code = 'VALIDATION';
+      throw err;
+    }
+
+    const previousStatus = existing.status;
+
+    let updated;
+
+    if (newStatus === APPOINTMENT_STATUS.RESCHEDULED) {
+      if (!slotDate || !slotStart) {
+        const err = new Error('New date and time slot are required when status is Rescheduled');
+        err.code = 'VALIDATION';
+        throw err;
+      }
+
+      updated = await runTransaction(async (tx) => {
+        const resolved = await slotAvailability.resolveBookableSlot(
+          existing.serviceId,
+          slotDate,
+          slotStart
+        );
+
+        const sameSlot =
+          existing.slotDate.getTime() === resolved.dayStart.getTime() &&
+          existing.slotStartTime.getTime() === resolved.slotStartTime.getTime();
+
+        if (!sameSlot) {
+          await slotAvailability.assertSlotHasCapacity(tx, {
+            serviceId: existing.serviceId,
+            slotDate: resolved.dayStart,
+            slotStartTime: resolved.slotStartTime,
+            staffCount: resolved.staffCount,
+            excludeAppointmentId: appointmentId,
+          });
+        }
+
+        await appointmentModel.updateAppointment(
+          appointmentId,
+          {
+            slotDate: resolved.dayStart,
+            slotStartTime: resolved.slotStartTime,
+            slotEndTime: resolved.slotEndTime,
+            status: APPOINTMENT_STATUS.RESCHEDULED,
+          },
+          {},
+          tx
+        );
+
+        await this.recordStatusHistory(tx, {
+          appointmentId,
+          previousStatus,
+          newStatus: APPOINTMENT_STATUS.RESCHEDULED,
+          note,
+          changedByUserId: staffUserId,
+        });
+
+        return appointmentModel.findAppointmentById(appointmentId, { include: appointmentInclude }, tx);
+      }, BOOKING_TRANSACTION_OPTIONS);
+    } else {
+      updated = await runTransaction(async (tx) => {
+        await appointmentModel.updateAppointment(appointmentId, { status: newStatus }, {}, tx);
+        await this.recordStatusHistory(tx, {
+          appointmentId,
+          previousStatus,
+          newStatus,
+          note,
+          changedByUserId: staffUserId,
+        });
+        return appointmentModel.findAppointmentById(appointmentId, { include: appointmentInclude }, tx);
+      }, READ_TRANSACTION_OPTIONS);
+    }
+
+    const result = withPublicNumber(attachTimeSlot(updated));
+    void this.notifyStatusChange(updated, newStatus);
+    return result;
+  }
+
+  async markPastPendingAsNotServed() {
+    const now = new Date();
+    const rows = await appointmentModel.findManyAppointments({
+      where: {
+        status: APPOINTMENT_STATUS.PENDING,
+        slotEndTime: { lt: now },
+      },
+      include: appointmentInclude,
+    });
+
+    let updated = 0;
+    for (const row of rows) {
+      await runTransaction(async (tx) => {
+        await appointmentModel.updateAppointment(
+          row.id,
+          { status: APPOINTMENT_STATUS.NOT_SERVED },
+          {},
+          tx
+        );
+        await this.recordStatusHistory(tx, {
+          appointmentId: row.id,
+          previousStatus: APPOINTMENT_STATUS.PENDING,
+          newStatus: APPOINTMENT_STATUS.NOT_SERVED,
+          note: 'Automatically marked as not served (appointment time passed)',
+          changedByUserId: null,
+        });
+      }, READ_TRANSACTION_OPTIONS);
+      updated += 1;
+    }
+    return { scanned: rows.length, updated };
+  }
+
+  async updateAppointmentStatus(appointmentId, status, staffUserId = null, options = {}) {
+    if (staffUserId != null) {
+      return this.updateStaffAppointmentStatus(staffUserId, appointmentId, {
+        status,
+        note: options.note,
+        slotDate: options.slotDate,
+        slotStart: options.slotStart,
+      });
+    }
+
+    const appointment = await appointmentModel.findAppointmentById(appointmentId);
+    if (!appointment) {
+      throw new Error('Appointment not found');
     }
 
     const updated = await appointmentModel.updateAppointment(appointmentId, { status }, {
@@ -542,9 +824,11 @@ class AppointmentService {
   }
 
   async getStaffAppointments(staffUserId, query = {}) {
-    const assignments = await userModel.findStaffAssignments({ staffUserId }, {
-      select: { serviceId: true },
-    });
+    const staffId = Number(staffUserId);
+    const assignments = await userModel.findStaffAssignments(
+      { staffUserId: staffId },
+      { select: { serviceId: true } }
+    );
     const serviceIds = [...new Set(assignments.map((a) => a.serviceId))];
 
     if (serviceIds.length === 0) {
@@ -552,15 +836,7 @@ class AppointmentService {
       return { items: [], pagination: buildPaginationMeta({ page, limit, total: 0 }) };
     }
 
-    const where = { serviceId: { in: serviceIds } };
-    const slotDateRange = resolveDateFilterRange(query);
-    if (slotDateRange) {
-      where.slotDate = slotDateRange;
-    }
-    if (query.status) {
-      where.status = String(query.status).toUpperCase();
-    }
-
+    const where = buildStaffAppointmentWhere(serviceIds, query);
     const { page, limit, skip } = parsePagination(query);
 
     const [total, rows] = await Promise.all([
@@ -569,17 +845,12 @@ class AppointmentService {
         where,
         skip,
         take: limit,
-        include: appointmentInclude,
-        orderBy: { slotDate: 'desc' },
+        include: staffAppointmentInclude,
+        orderBy: [{ slotDate: 'desc' }, { createdAt: 'desc' }],
       }),
     ]);
 
-    const mapped = attachTimeSlotMany(rows).map((a) => {
-      const flat = withPublicNumber(a);
-      delete flat.feedback;
-      return flat;
-    });
-    const items = await formSubmissionService.attachSubmissionsToMany(mapped);
+    const items = rows.map(mapStaffListRow);
 
     return {
       items,

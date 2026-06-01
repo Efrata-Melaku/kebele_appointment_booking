@@ -5,6 +5,9 @@ const {
   buildUpdateHtml,
   buildCancellationHtml,
   buildReminderHtml,
+  buildCompletedHtml,
+  buildNotServedHtml,
+  buildRescheduledStatusHtml,
 } = require('../templates/appointmentConfirmation');
 
 function normalizeRecipient(email) {
@@ -69,11 +72,29 @@ async function sendAppointmentReminderEmail(data) {
   return sendEmail(data.email, 'Appointment Reminder', html);
 }
 
+async function sendAppointmentCompletedEmail(data) {
+  const html = buildCompletedHtml(data);
+  return sendEmail(data.email, 'Appointment Completed', html);
+}
+
+async function sendAppointmentNotServedEmail(data) {
+  const html = buildNotServedHtml(data);
+  return sendEmail(data.email, 'Appointment Not Served', html);
+}
+
+async function sendAppointmentRescheduledEmail(data) {
+  const html = buildRescheduledStatusHtml(data);
+  return sendEmail(data.email, 'Appointment Rescheduled', html);
+}
+
 module.exports = {
   sendEmail,
   sendAppointmentConfirmationEmail,
   sendAppointmentUpdateEmail,
   sendAppointmentCancellationEmail,
   sendAppointmentReminderEmail,
+  sendAppointmentCompletedEmail,
+  sendAppointmentNotServedEmail,
+  sendAppointmentRescheduledEmail,
   normalizeRecipient,
 };

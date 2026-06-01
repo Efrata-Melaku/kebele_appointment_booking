@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "node prisma/seed.js",
-    "reminders": "node scripts/send-reminders.js"
+    "reminders": "node scripts/send-reminders.js",
+    "mark-not-served": "node scripts/mark-not-served.js"
   },
   "keywords": [
     "kebele",

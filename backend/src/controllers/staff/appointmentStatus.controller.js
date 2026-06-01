@@ -1,6 +1,6 @@
 const appointmentService = require('../../services/appointment.service');
-const { APPOINTMENT_STATUS } = require('../../config/constants');
-const { paginatedSuccess, errorResponse } = require('../../utils/response');
+const slotAvailability = require('../../services/slotAvailability.service');
+const { paginatedSuccess, errorResponse, successResponse } = require('../../utils/response');
 
 function mapServiceError(res, error, fallbackMessage) {
   if (error.code === 'NOT_FOUND' || error.message?.includes('not found')) {
@@ -9,10 +9,34 @@ function mapServiceError(res, error, fallbackMessage) {
   if (error.code === 'FORBIDDEN') {
     return errorResponse(res, error.message, 403);
   }
+  if (error.code === 'VALIDATION') {
+    return errorResponse(res, error.message, 400);
+  }
+  if (
+    error.message?.includes('fully booked') ||
+    error.message?.includes('Invalid time slot') ||
+    error.message?.includes('required when status')
+  ) {
+    return errorResponse(res, error.message, 400);
+  }
   return errorResponse(res, fallbackMessage, 500);
 }
 
 class AppointmentStatusController {
+  async getAvailableSlots(req, res) {
+    try {
+      const { serviceId, date } = req.query;
+      const slots = await slotAvailability.getAvailableSlotsForAdmin(serviceId, date);
+      successResponse(res, 'Available slots retrieved successfully', slots);
+    } catch (error) {
+      if (error.message?.includes('not found') || error.message?.includes('Invalid date')) {
+        return errorResponse(res, error.message, 400);
+      }
+      console.error('[staff getAvailableSlots]', error);
+      errorResponse(res, 'Failed to retrieve available slots', 500);
+    }
+  }
+
   async getAppointments(req, res) {
     try {
       const { items, pagination } = await appointmentService.getStaffAppointments(
@@ -22,6 +46,7 @@ class AppointmentStatusController {
 
       paginatedSuccess(res, 'Appointments retrieved successfully', items, pagination);
     } catch (error) {
+      console.error('[staff getAppointments]', error);
       errorResponse(res, 'Failed to retrieve appointments', 500);
     }
   }
@@ -29,28 +54,15 @@ class AppointmentStatusController {
   async updateAppointmentStatus(req, res) {
     try {
       const { id } = req.params;
-      const { status } = req.body;
-
-      const prismaStatus =
-        ({
-          pending: APPOINTMENT_STATUS.PENDING,
-          completed: APPOINTMENT_STATUS.COMPLETED,
-          rescheduled: APPOINTMENT_STATUS.RESCHEDULED,
-          not_served: APPOINTMENT_STATUS.NOT_SERVED,
-        }[String(status).trim().toLowerCase()]);
-
-      if (!prismaStatus) {
-        return errorResponse(res, 'Invalid status value', 400);
-      }
-
-      const appointment = await appointmentService.updateAppointmentStatus(
+      const appointment = await appointmentService.updateStaffAppointmentStatus(
+        req.user.id,
         parseInt(id, 10),
-        prismaStatus,
-        req.user.id
+        req.body
       );
 
       successResponse(res, 'Appointment status updated successfully', appointment);
     } catch (error) {
+      console.error('[staff updateAppointmentStatus]', error);
       return mapServiceError(res, error, 'Failed to update appointment status');
     }
   }

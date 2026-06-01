@@ -72,6 +72,30 @@ async function sendReminderForAppointment(appointment) {
   return emailService.sendAppointmentReminderEmail(payload);
 }
 
+async function sendStatusChangeForAppointment(appointment, newStatus) {
+  const payload = buildEmailPayload({ ...appointment, status: newStatus });
+  if (!payload.email) {
+    return { success: false, skipped: true, message: 'Resident has no email address' };
+  }
+  const status = String(newStatus).toUpperCase();
+  if (status === 'COMPLETED') {
+    return emailService.sendAppointmentCompletedEmail(payload);
+  }
+  if (status === 'NOT_SERVED') {
+    return emailService.sendAppointmentNotServedEmail(payload);
+  }
+  if (status === 'RESCHEDULED') {
+    return emailService.sendAppointmentRescheduledEmail(payload);
+  }
+  if (status === 'CANCELLED') {
+    return emailService.sendAppointmentCancellationEmail(payload);
+  }
+  if (status === 'PENDING') {
+    return emailService.sendAppointmentUpdateEmail(payload);
+  }
+  return emailService.sendAppointmentUpdateEmail(payload);
+}
+
 async function resendConfirmationByRef(appointmentRef, phone, appointmentItemId) {
   const normalizedPhone = requireNormalizedPhone(phone);
   const ref = String(appointmentRef).trim();
@@ -114,5 +138,6 @@ module.exports = {
   sendUpdateForAppointment,
   sendCancellationForAppointment,
   sendReminderForAppointment,
+  sendStatusChangeForAppointment,
   resendConfirmationByRef,
 };

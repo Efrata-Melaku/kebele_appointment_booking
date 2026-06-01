@@ -162,8 +162,20 @@ async function countSlotBookings(tx, { serviceId, slotDate, slotStartTime }) {
   );
 }
 
-async function assertSlotHasCapacity(tx, { serviceId, slotDate, slotStartTime, staffCount }) {
-  const booked = await countSlotBookings(tx, { serviceId, slotDate, slotStartTime });
+async function assertSlotHasCapacity(
+  tx,
+  { serviceId, slotDate, slotStartTime, staffCount, excludeAppointmentId }
+) {
+  const where = {
+    serviceId,
+    slotDate,
+    slotStartTime,
+    status: { in: ACTIVE_STATUSES },
+  };
+  if (excludeAppointmentId != null) {
+    where.id = { not: Number(excludeAppointmentId) };
+  }
+  const booked = await appointmentModel.countSlotBookings(where, tx);
   if (booked >= staffCount || staffCount <= 0) {
     throw new Error('Time slot is fully booked');
   }

@@ -68,13 +68,11 @@ const listResidentsQuerySchema = Joi.object({
 
 const staffAppointmentsQuerySchema = Joi.object({
   ...paginationQueryFields,
+  search: Joi.string().trim().max(200).optional(),
   status: Joi.string()
     .valid('PENDING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NOT_SERVED', 'pending', 'completed', 'cancelled', 'rescheduled', 'not_served')
     .optional(),
-  datePreset: Joi.string().valid('today', 'week', 'month').optional(),
   slotDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  dateFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  dateTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 // Department validators
@@ -293,8 +291,22 @@ const adminFeedbackQuerySchema = Joi.object({
 
 const updateAppointmentStatusSchema = Joi.object({
   status: Joi.string()
-    .valid('pending', 'completed', 'rescheduled', 'not_served')
+    .valid(
+      'PENDING',
+      'COMPLETED',
+      'RESCHEDULED',
+      'NOT_SERVED',
+      'CANCELLED',
+      'pending',
+      'completed',
+      'rescheduled',
+      'not_served',
+      'cancelled'
+    )
     .required(),
+  note: Joi.string().trim().max(1000).allow('', null).optional(),
+  slotDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  slotStart: Joi.string().pattern(/^\d{2}:\d{2}$/).optional(),
 });
 
 const workScheduleTemplateSchema = Joi.object({

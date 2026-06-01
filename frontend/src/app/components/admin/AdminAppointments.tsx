@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { Calendar, Eye, Search } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
-import { http } from '../../../lib/http';
-import { appendDateFilters, type DatePreset } from '../../../lib/dateFilters';
 import { DEFAULT_PAGE_LIMIT, parsePaginatedBody, type PaginationMeta } from '../../../lib/pagination';
 import { PaginationBar } from '../ui/PaginationBar';
 import { TableSkeleton } from '../ui/ListSkeleton';
@@ -30,9 +28,6 @@ type Row = {
   createdAt: string;
 };
 
-type Dept = { id: number; name: string };
-type Svc = { id: number; name: string; departmentId: number };
-
 function fmtDate(iso?: string) {
   return iso ? new Date(iso).toLocaleDateString() : '—';
 }
@@ -56,66 +51,29 @@ export function AdminAppointments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [departments, setDepartments] = useState<Dept[]>([]);
-  const [services, setServices] = useState<Svc[]>([]);
-
   const [search, setSearch] = useState('');
-  const [departmentId, setDepartmentId] = useState('');
-  const [serviceId, setServiceId] = useState('');
-  const [status, setStatus] = useState('');
-  const [datePreset, setDatePreset] = useState<DatePreset>('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [slotDate, setSlotDate] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [residentName, setResidentName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [appointmentNumber, setAppointmentNumber] = useState('');
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, slotDate, status]);
 
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
     q.set('page', String(page));
     q.set('limit', String(DEFAULT_PAGE_LIMIT));
-    if (search.trim()) q.set('search', search.trim());
-    if (departmentId) q.set('departmentId', departmentId);
-    if (serviceId) q.set('serviceId', serviceId);
+    if (debouncedSearch) q.set('search', debouncedSearch);
+    if (slotDate) q.set('slotDate', slotDate);
     if (status) q.set('status', status);
-    appendDateFilters(q, {
-      datePreset,
-      slotDate: datePreset === '' && slotDate ? slotDate : undefined,
-      dateFrom: datePreset === '' && !slotDate ? dateFrom : undefined,
-      dateTo: datePreset === '' && !slotDate ? dateTo : undefined,
-    });
-    if (residentName.trim()) q.set('residentName', residentName.trim());
-    if (phone.trim()) q.set('phone', phone.trim());
-    if (appointmentNumber.trim()) q.set('appointmentNumber', appointmentNumber.trim());
     return q.toString();
-  }, [
-    page,
-    search,
-    departmentId,
-    serviceId,
-    status,
-    datePreset,
-    slotDate,
-    dateFrom,
-    dateTo,
-    residentName,
-    phone,
-    appointmentNumber,
-  ]);
-
-  const loadMeta = useCallback(async () => {
-    try {
-      const [dRes, sRes] = await Promise.all([
-        http.get<{ success: boolean; data: Dept[] }>('/api/admin/departments'),
-        http.get<{ success: boolean; data: Svc[] }>('/api/admin/services'),
-      ]);
-      if (dRes.data.success && dRes.data.data) setDepartments(dRes.data.data);
-      if (sRes.data.success && sRes.data.data) setServices(sRes.data.data);
-    } catch {
-      /* optional */
-    }
-  }, []);
+  }, [page, debouncedSearch, slotDate, status]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -145,21 +103,8 @@ export function AdminAppointments() {
   }, [queryString]);
 
   useEffect(() => {
-    void loadMeta();
-  }, [loadMeta]);
-
-  useEffect(() => {
     void load();
   }, [load]);
-
-  function applyFilters(e: React.FormEvent) {
-    e.preventDefault();
-    setPage(1);
-  }
-
-  const filteredServices = departmentId
-    ? services.filter((s) => String(s.departmentId) === departmentId)
-    : services;
 
   const statCards = stats
     ? [
@@ -193,129 +138,44 @@ export function AdminAppointments() {
         </div>
       ) : null}
 
-      <form
-        onSubmit={applyFilters}
-        className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"
-      >
-        <div className="sm:col-span-2 lg:col-span-4 flex gap-2">
-          <div className="relative flex-1">
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Search appointment</label>
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm"
-              placeholder="Search appointment #, name, or phone"
+              placeholder="Appointment #, name, or phone"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <button
-            type="submit"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-          >
-            Apply
-          </button>
         </div>
-        <select
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          value={departmentId}
-          onChange={(e) => {
-            setDepartmentId(e.target.value);
-            setServiceId('');
-          }}
-        >
-          <option value="">All departments</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          value={serviceId}
-          onChange={(e) => setServiceId(e.target.value)}
-        >
-          <option value="">All services</option>
-          {filteredServices.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="">All statuses</option>
-          {['PENDING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NOT_SERVED'].map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-        <select
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          value={datePreset}
-          onChange={(e) => {
-            const v = e.target.value as DatePreset;
-            setDatePreset(v);
-            if (v) {
-              setSlotDate('');
-              setDateFrom('');
-              setDateTo('');
-            }
-          }}
-        >
-          <option value="">Custom date range</option>
-          <option value="today">Today</option>
-          <option value="week">This week</option>
-          <option value="month">This month</option>
-        </select>
-        <input
-          type="date"
-          title="Single appointment date"
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-          value={slotDate}
-          disabled={!!datePreset}
-          onChange={(e) => {
-            setSlotDate(e.target.value);
-            setDateFrom('');
-            setDateTo('');
-          }}
-        />
-        <input
-          type="date"
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-          value={dateFrom}
-          disabled={!!datePreset || !!slotDate}
-          onChange={(e) => setDateFrom(e.target.value)}
-        />
-        <input
-          type="date"
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
-          value={dateTo}
-          disabled={!!datePreset || !!slotDate}
-          onChange={(e) => setDateTo(e.target.value)}
-        />
-        <input
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          placeholder="Resident name"
-          value={residentName}
-          onChange={(e) => setResidentName(e.target.value)}
-        />
-        <input
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          placeholder="Phone"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
-        <input
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-          placeholder="Appointment #"
-          value={appointmentNumber}
-          onChange={(e) => setAppointmentNumber(e.target.value)}
-        />
-      </form>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Filter by date</label>
+          <input
+            type="date"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            value={slotDate}
+            onChange={(e) => setSlotDate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <select
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option value="">All</option>
+            {['PENDING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NOT_SERVED'].map((s) => (
+              <option key={s} value={s}>
+                {s.replace('_', ' ')}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
@@ -377,11 +237,7 @@ export function AdminAppointments() {
             </table>
           </div>
         )}
-        <PaginationBar
-          pagination={pagination}
-          loading={loading}
-          onPageChange={setPage}
-        />
+        <PaginationBar pagination={pagination} loading={loading} onPageChange={setPage} />
       </div>
     </div>
   );

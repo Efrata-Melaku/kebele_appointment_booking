@@ -3,7 +3,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { isAxiosError } from 'axios';
-import { Plus, X, Loader2, ClipboardList } from 'lucide-react';
+import { Plus, X, Loader2, ClipboardList, Pencil, Trash2 } from 'lucide-react';
 import { Link } from 'react-router';
 import { http } from '../../../lib/http';
 import type { ApiEnvelope } from '../../../lib/api';
@@ -110,6 +110,10 @@ export function ServicesManagement() {
   const [builderRows, setBuilderRows] = useState<BuilderRow[]>([newBuilderRow()]);
   const [fieldsSubmitting, setFieldsSubmitting] = useState(false);
   const [fieldsFormError, setFieldsFormError] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ServiceRow | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteToast, setDeleteToast] = useState('');
 
   const deptDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const svcDupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -362,6 +366,26 @@ export function ServicesManagement() {
     resetServiceModal();
   }
 
+  async function confirmDeleteService() {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      const r = await http.delete<ApiEnvelope>(`/api/admin/services/${deleteTarget.id}`);
+      if (!r.data.success) {
+        throw new Error(r.data.error || 'Failed to delete service');
+      }
+      setDeleteToast('Service deleted successfully');
+      setDeleteTarget(null);
+      await load();
+      window.setTimeout(() => setDeleteToast(''), 4000);
+    } catch (e) {
+      setDeleteError(errMsg(e));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   const deptSubmitting = deptForm.formState.isSubmitting;
   const svcSubmitting = svcForm.formState.isSubmitting;
 
@@ -409,6 +433,11 @@ export function ServicesManagement() {
       {loadError ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{loadError}</div>
       ) : null}
+      {deleteToast ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
+          {deleteToast}
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {services.map((service) => (
@@ -425,15 +454,37 @@ export function ServicesManagement() {
                 {service.durationInMinutes} min · staff capacity {service.staffCount}
               </span>
             </div>
-            <Link
-              to={`/admin/form-builder`}
-              state={{ serviceId: service.id }}
-              className="mt-3 inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-              onClick={() => sessionStorage.setItem('formBuilderServiceId', String(service.id))}
-            >
-              <ClipboardList className="h-4 w-4" />
-              Manage booking form
-            </Link>
+            <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+              <Link
+                to={`/admin/form-builder`}
+                state={{ serviceId: service.id }}
+                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                onClick={() => sessionStorage.setItem('formBuilderServiceId', String(service.id))}
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteError('');
+                  setDeleteTarget(service);
+                }}
+                className="inline-flex items-center gap-1 text-sm text-red-600 hover:underline"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+              <Link
+                to={`/admin/form-builder`}
+                state={{ serviceId: service.id }}
+                className="inline-flex items-center gap-1 text-sm text-gray-500 hover:underline ml-auto"
+                onClick={() => sessionStorage.setItem('formBuilderServiceId', String(service.id))}
+              >
+                <ClipboardList className="h-4 w-4" />
+                Form fields
+              </Link>
+            </div>
           </div>
         ))}
       </div>
@@ -758,6 +809,48 @@ export function ServicesManagement() {
           </div>
         </div>
       )}
+
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.25)] backdrop-blur-[12px] p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-lg" role="dialog" aria-modal="true">
+            <h3 className="text-xl font-semibold text-gray-900">Delete Service</h3>
+            <p className="mt-3 text-sm text-gray-600">
+              Are you sure you want to delete <strong>{deleteTarget.name}</strong>? This action cannot be undone.
+            </p>
+            {deleteError ? (
+              <p className="mt-3 text-sm text-red-600">{deleteError}</p>
+            ) : null}
+            <div className="mt-6 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={deleteBusy}
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteError('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={deleteBusy}
+                onClick={() => void confirmDeleteService()}
+              >
+                {deleteBusy ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Deleting…
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

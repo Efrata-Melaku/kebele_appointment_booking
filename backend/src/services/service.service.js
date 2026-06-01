@@ -1,7 +1,14 @@
 const serviceModel = require('../models/service.model');
 const departmentModel = require('../models/department.model');
-const serviceFormFieldModel = require('../models/serviceFormField.model');
+const appointmentModel = require('../models/appointment.model');
+const { getClient, runTransaction } = require('../models/_client');
 const { ConflictError, NotFoundError } = require('../utils/AppError');
+
+function startOfTodayLocal() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 class ServiceService {
   async createService(payload) {
@@ -101,8 +108,38 @@ class ServiceService {
   }
 
   async deleteService(id) {
+    const serviceId = Number(id);
+    const service = await serviceModel.findServiceById(serviceId);
+    if (!service) {
+      throw new NotFoundError('Service not found');
+    }
+
+    const today = startOfTodayLocal();
+    const blockingAppointments = await appointmentModel.countAppointments({
+      serviceId,
+      OR: [
+        { status: { in: ['PENDING', 'RESCHEDULED'] } },
+        {
+          AND: [{ slotDate: { gte: today } }, { status: { not: 'CANCELLED' } }],
+        },
+      ],
+    });
+
+    if (blockingAppointments > 0) {
+      throw new ConflictError(
+        'This service cannot be deleted because appointments are associated with it.'
+      );
+    }
+
     try {
-      await serviceModel.deleteService(id);
+      await runTransaction(async (tx) => {
+        const db = getClient(tx);
+        await db.staffServiceAssignment.deleteMany({ where: { serviceId } });
+        await db.serviceFormField.deleteMany({ where: { serviceId } });
+        await db.serviceScheduleOverride.deleteMany({ where: { serviceId } });
+        await db.serviceFormSubmission.deleteMany({ where: { serviceId } });
+        await db.service.delete({ where: { id: serviceId } });
+      });
     } catch (err) {
       if (err.code === 'P2025') {
         throw new NotFoundError('Service not found');

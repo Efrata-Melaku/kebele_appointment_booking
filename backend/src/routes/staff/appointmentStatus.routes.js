@@ -4,6 +4,7 @@ const validate = require('../../middleware/validate.middleware');
 const {
   updateAppointmentStatusSchema,
   staffAppointmentsQuerySchema,
+  availableSlotsQuerySchema,
 } = require('../../utils/validators');
 
 const router = express.Router();
@@ -13,6 +14,13 @@ router.get(
   '/appointments',
   validate.validateQuery(staffAppointmentsQuerySchema),
   appointmentStatusController.getAppointments
+);
+
+// GET /api/staff/appointments/available-slots?serviceId=&date=
+router.get(
+  '/appointments/available-slots',
+  validate.validateQuery(availableSlotsQuerySchema),
+  appointmentStatusController.getAvailableSlots
 );
 
 // GET /api/staff/appointments/:id

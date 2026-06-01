@@ -45,6 +45,7 @@ model User {
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   isActive  Boolean  @default(true)
   staffServiceAssignments StaffServiceAssignment[]
+  appointmentStatusChanges AppointmentStatusHistory[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -162,9 +163,25 @@ model Appointment {
   feedback    Feedback? @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
   formSubmission ServiceFormSubmission?
   uploadedFiles UploadedFile[]
+  statusHistory AppointmentStatusHistory[]
 
   @@index([serviceId, slotDate, slotStartTime])
   @@map("appointments")
+}
+
+model AppointmentStatusHistory {
+  id              Int               @id @default(autoincrement())
+  appointmentId   Int
+  appointment     Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  previousStatus  AppointmentStatus?
+  newStatus       AppointmentStatus
+  note            String?           @db.Text
+  changedByUserId Int?
+  changedBy       User?             @relation(fields: [changedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime          @default(now())
+
+  @@index([appointmentId, createdAt])
+  @@map("appointment_status_history")
 }
 
 /// One resident booking submission per service appointment (logical module per serviceId)

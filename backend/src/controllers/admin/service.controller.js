@@ -88,6 +88,7 @@ class ServiceController {
       if (error instanceof AppError) {
         return errorResponse(res, error.message, error.statusCode);
       }
+      console.error('[deleteService]', error);
       errorResponse(res, 'Failed to delete service', 500);
     }
   }
