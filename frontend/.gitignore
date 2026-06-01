@@ -1,5 +1,12 @@
 # dependencies
 node_modules/
 
+# build outputs
+dist/
+resident-portal/dist/
+management-portal/dist/
+
 # environment variables
 .env
+resident-portal/.env
+management-portal/.env
