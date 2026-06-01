@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { GripVertical, Loader2, Pencil, Plus, EyeOff } from 'lucide-react';
+import { isAxiosError } from 'axios';
+import { GripVertical, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { http } from '../../../lib/http';
 import type { ApiEnvelope } from '../../../lib/api';
 import { Button } from '../ui/button';
@@ -57,13 +59,15 @@ function DraggableFieldRow({
   index,
   move,
   onEdit,
-  onDeactivate,
+  onDelete,
+  deleteDisabled,
 }: {
   field: ServiceFormFieldDef;
   index: number;
   move: (from: number, to: number) => void;
   onEdit: (f: ServiceFormFieldDef) => void;
-  onDeactivate: (id: number) => void;
+  onDelete: (f: ServiceFormFieldDef) => void;
+  deleteDisabled?: boolean;
 }) {
   const [{ isDragging }, drag] = useDrag({
     type: DND_TYPE,
@@ -96,15 +100,29 @@ function DraggableFieldRow({
           {field.isActive === false ? ' · inactive' : ''}
         </p>
       </div>
-      <div className="flex gap-1">
-        <Button type="button" size="sm" variant="outline" onClick={() => onEdit(field)}>
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          title="Edit field"
+          aria-label={`Edit ${field.label}`}
+          onClick={() => onEdit(field)}
+        >
           <Pencil className="h-4 w-4" />
         </Button>
-        {field.isActive !== false ? (
-          <Button type="button" size="sm" variant="outline" onClick={() => onDeactivate(field.id)}>
-            <EyeOff className="h-4 w-4" />
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          title="Delete field"
+          aria-label={`Delete ${field.label}`}
+          disabled={deleteDisabled}
+          className="text-red-600 hover:bg-red-50 hover:text-red-700 border-red-200"
+          onClick={() => onDelete(field)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -122,6 +140,10 @@ export function ServiceFormBuilder() {
   const [showEditor, setShowEditor] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<FieldDraft>(emptyDraft());
+
+  const [deleteTarget, setDeleteTarget] = useState<ServiceFormFieldDef | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const loadServices = useCallback(async () => {
     const r = await http.get<ApiEnvelope<ServiceRow[]>>('/api/admin/services');
@@ -259,17 +281,48 @@ export function ServiceFormBuilder() {
     }
   }
 
-  async function deactivateField(id: number) {
-    if (!confirm('Deactivate this field? Existing appointment answers will be kept.')) return;
-    setSaving(true);
+  function openDeleteConfirm(field: ServiceFormFieldDef) {
+    setDeleteError('');
+    setDeleteTarget(field);
+  }
+
+  async function confirmDeleteField() {
+    if (!deleteTarget) return;
+    const fieldId = deleteTarget.id;
+    setDeleteBusy(true);
+    setDeleteError('');
     try {
-      await http.delete(`/api/admin/form-fields/${id}`);
-      setMessage('Field deactivated');
-      if (serviceId !== '') await loadFields(serviceId);
+      const r = await http.delete<ApiEnvelope<ServiceFormFieldDef>>(`/api/admin/form-fields/${fieldId}`);
+      if (!r.data.success) {
+        throw new Error(r.data.error || 'Failed to delete form field');
+      }
+      setFields((prev) =>
+        prev.map((f) => (f.id === fieldId ? { ...f, isActive: false } : f))
+      );
+      if (editingId === fieldId) {
+        setShowEditor(false);
+        setEditingId(null);
+        setDraft(emptyDraft());
+      }
+      setDeleteTarget(null);
+      toast.success('Form field deleted successfully.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed');
+      const msg = isAxiosError(e)
+        ? ((e.response?.data as ApiEnvelope | undefined)?.error ?? e.message)
+        : e instanceof Error
+          ? e.message
+          : 'Failed to delete form field';
+      const status = isAxiosError(e) ? e.response?.status : undefined;
+      if (status === 404 || /not found/i.test(msg)) {
+        setFields((prev) => prev.filter((f) => f.id !== fieldId));
+        setDeleteTarget(null);
+        toast.error('This form field no longer exists.');
+      } else {
+        setDeleteError(msg);
+        toast.error(msg);
+      }
     } finally {
-      setSaving(false);
+      setDeleteBusy(false);
     }
   }
 
@@ -338,7 +391,8 @@ export function ServiceFormBuilder() {
                     index={i}
                     move={moveField}
                     onEdit={openEdit}
-                    onDeactivate={deactivateField}
+                    onDelete={openDeleteConfirm}
+                    deleteDisabled={deleteBusy}
                   />
                 ))}
               </div>
@@ -365,6 +419,61 @@ export function ServiceFormBuilder() {
           ) : null}
         </div>
       ) : null}
+
+      <Dialog
+        open={deleteTarget != null}
+        onOpenChange={(open) => {
+          if (!deleteBusy && !open) {
+            setDeleteTarget(null);
+            setDeleteError('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Form Field</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this form field? This action cannot be undone.
+              {deleteTarget ? (
+                <span className="mt-2 block font-medium text-gray-800">{deleteTarget.label}</span>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError ? (
+            <p className="text-sm text-red-600" role="alert">
+              {deleteError}
+            </p>
+          ) : null}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={deleteBusy}
+              onClick={() => {
+                setDeleteTarget(null);
+                setDeleteError('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleteBusy}
+              onClick={() => void confirmDeleteField()}
+            >
+              {deleteBusy ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                'Delete'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={showEditor}

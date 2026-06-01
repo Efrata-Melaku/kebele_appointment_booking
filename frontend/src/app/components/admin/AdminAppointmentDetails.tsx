@@ -9,7 +9,7 @@ import {
   Star,
   User,
 } from 'lucide-react';
-import { apiFetch, resolveUploadUrl } from '../../../lib/api';
+import { apiFetch, browserViewUrl } from '../../../lib/api';
 
 type Detail = {
   appointment: {
@@ -25,8 +25,6 @@ type Detail = {
     phone: string;
     email?: string;
     gender: string;
-    kebeleId?: string | null;
-    houseNumber?: string | null;
   } | null;
   service: { name: string; department?: { name: string } | null } | null;
   formResponses: { fieldLabel: string; fieldType: string; value?: string; fileUrl?: string; fileName?: string }[];
@@ -231,9 +229,9 @@ export function AdminAppointmentDetails() {
             {uploadedFiles.map((f, i) => (
               <li key={i}>
                 <a
-                  href={resolveUploadUrl(f.fileUrl)}
+                  href={browserViewUrl(f.fileUrl)}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="text-blue-600 hover:underline"
                 >
                   {f.fieldLabel}: {f.fileName}

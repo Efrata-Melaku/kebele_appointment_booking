@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Calendar, ClipboardList, ExternalLink, FileText, History, Loader2, Paperclip, Pencil, User } from 'lucide-react';
-import { apiFetch, resolveUploadUrl } from '../../../lib/api';
+import { apiFetch, browserViewUrl } from '../../../lib/api';
 import { statusBadgeClass, statusLabel, type StaffStatusTarget } from '../../../lib/staffAppointmentStatus';
 import {
   Dialog,
@@ -37,8 +37,6 @@ type AppointmentDetail = {
     fullName: string;
     phone: string;
     gender: string;
-    kebeleId?: string | null;
-    houseNumber?: string | null;
   } | null;
   service: {
     id?: number;
@@ -123,12 +121,6 @@ export function StaffAppointmentViewModal({
     }
   }, [open, appointmentId, load]);
 
-  function openFile(file: UploadedFile | FormResponseItem) {
-    const url = resolveUploadUrl(file.fileUrl);
-    if (!url) return;
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
-
   const nonFileResponses =
     detail?.formResponses.filter((r) => r.fieldType !== 'file' && !r.fileUrl) ?? [];
   const fileResponses =
@@ -200,14 +192,6 @@ export function StaffAppointmentViewModal({
                   <dt className="text-gray-500">Gender</dt>
                   <dd>{detail.resident?.gender || '—'}</dd>
                 </div>
-                <div>
-                  <dt className="text-gray-500">Kebele ID</dt>
-                  <dd>{detail.resident?.kebeleId || '—'}</dd>
-                </div>
-                <div>
-                  <dt className="text-gray-500">House number</dt>
-                  <dd>{detail.resident?.houseNumber || '—'}</dd>
-                </div>
               </dl>
             </section>
 
@@ -263,14 +247,21 @@ export function StaffAppointmentViewModal({
                         <p className="text-gray-500 text-xs">{row.fileName || 'File'}</p>
                       </div>
                       {row.fileUrl ? (
-                        <button
-                          type="button"
-                          onClick={() => openFile(row)}
+                        <a
+                          href={browserViewUrl(row.fileUrl)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            if (!browserViewUrl(row.fileUrl)) {
+                              e.preventDefault();
+                              setError('File URL is missing or invalid.');
+                            }
+                          }}
                           className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-blue-700 hover:bg-blue-50"
                         >
                           <ExternalLink className="h-4 w-4" />
-                          View file
-                        </button>
+                          Open in browser
+                        </a>
                       ) : null}
                     </div>
                   ))}
@@ -326,14 +317,21 @@ export function StaffAppointmentViewModal({
                           <p className="text-xs text-gray-500 truncate">{file.fileName}</p>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => openFile(file)}
+                      <a
+                        href={browserViewUrl(file.fileUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => {
+                          if (!browserViewUrl(file.fileUrl)) {
+                            e.preventDefault();
+                            setError('File URL is missing or invalid.');
+                          }
+                        }}
                         className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-blue-700 hover:bg-blue-50 shrink-0"
                       >
                         <ExternalLink className="h-4 w-4" />
-                        View file
-                      </button>
+                        Open in browser
+                      </a>
                     </div>
                   ))}
                 </div>

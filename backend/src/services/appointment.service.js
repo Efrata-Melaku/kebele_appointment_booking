@@ -11,6 +11,7 @@ const { attachTimeSlot, attachTimeSlotMany } = require('../utils/appointmentSlot
 const slotAvailability = require('./slotAvailability.service');
 const emailService = require('./email.service');
 const formSubmissionService = require('./formSubmission.service');
+const { normalizeStoredFileUrl } = require('../utils/uploadUrl');
 const statusHistoryModel = require('../models/appointmentStatusHistory.model');
 const smsService = require('./sms.service');
 const appointmentEmailService = require('./appointmentEmail.service');
@@ -549,12 +550,12 @@ class AppointmentService {
       uploadedFileRows
     );
 
-    if (flat.documentUrl && !uploadedFiles.some((f) => f.fileUrl === flat.documentUrl)) {
-      const fileName = formSubmissionService.fileNameFromUrl(flat.documentUrl);
+    const appointmentDocUrl = normalizeStoredFileUrl(flat.documentUrl);
+    if (appointmentDocUrl && !uploadedFiles.some((f) => f.fileUrl === appointmentDocUrl)) {
       uploadedFiles.push({
         fieldLabel: 'Appointment document',
-        fileUrl: flat.documentUrl,
-        fileName,
+        fileUrl: appointmentDocUrl,
+        fileName: formSubmissionService.fileNameFromUrl(appointmentDocUrl),
       });
     }
 
@@ -1275,11 +1276,12 @@ class AppointmentService {
       uploadedFileRows
     );
 
-    if (flat.documentUrl && !uploadedFiles.some((f) => f.fileUrl === flat.documentUrl)) {
+    const appointmentDocUrl = normalizeStoredFileUrl(flat.documentUrl);
+    if (appointmentDocUrl && !uploadedFiles.some((f) => f.fileUrl === appointmentDocUrl)) {
       uploadedFiles.push({
         fieldLabel: 'Appointment document',
-        fileUrl: flat.documentUrl,
-        fileName: formSubmissionService.fileNameFromUrl(flat.documentUrl),
+        fileUrl: appointmentDocUrl,
+        fileName: formSubmissionService.fileNameFromUrl(appointmentDocUrl),
       });
     }
 

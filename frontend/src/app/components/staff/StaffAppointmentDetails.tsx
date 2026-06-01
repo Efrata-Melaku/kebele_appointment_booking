@@ -13,7 +13,7 @@ import {
   History,
   Pencil,
 } from 'lucide-react';
-import { apiFetch, resolveUploadUrl } from '../../../lib/api';
+import { apiFetch, browserViewUrl, resolveUploadUrl } from '../../../lib/api';
 import { statusBadgeClass, statusLabel, type StaffStatusTarget } from '../../../lib/staffAppointmentStatus';
 import { Button } from '../ui/button';
 import { StaffStatusUpdateModal } from './StaffStatusUpdateModal';
@@ -46,8 +46,6 @@ type AppointmentDetail = {
     fullName: string;
     phone: string;
     gender: string;
-    kebeleId?: string | null;
-    houseNumber?: string | null;
   } | null;
   service: {
     id?: number;
@@ -65,16 +63,6 @@ type AppointmentDetail = {
     createdAt: string;
   }[];
 };
-
-function isImageFile(name: string, fileType?: string | null) {
-  if (fileType?.startsWith('image/')) return true;
-  return /\.(jpe?g|png|gif|webp)$/i.test(name);
-}
-
-function isPdfFile(name: string, fileType?: string | null) {
-  if (fileType === 'application/pdf') return true;
-  return /\.pdf$/i.test(name);
-}
 
 function formatDate(iso?: string) {
   return iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—';
@@ -126,9 +114,6 @@ export function StaffAppointmentDetails() {
   const [error, setError] = useState('');
   const [statusOpen, setStatusOpen] = useState(false);
   const [statusTarget, setStatusTarget] = useState<StaffStatusTarget | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLabel, setPreviewLabel] = useState('');
-
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
@@ -164,22 +149,12 @@ export function StaffAppointmentDetails() {
     void load();
   }, [load]);
 
-  function openFile(file: UploadedFile) {
-    const url = resolveUploadUrl(file.fileUrl);
-    if (isPdfFile(file.fileName, file.fileType)) {
-      window.open(url, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    if (isImageFile(file.fileName, file.fileType)) {
-      setPreviewUrl(url);
-      setPreviewLabel(file.fieldLabel);
-      return;
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }
-
   function downloadFile(file: UploadedFile) {
     const url = resolveUploadUrl(file.fileUrl);
+    if (!url) {
+      setError('File URL is missing or invalid.');
+      return;
+    }
     const a = document.createElement('a');
     a.href = url;
     a.download = file.fileName || 'download';
@@ -259,8 +234,6 @@ export function StaffAppointmentDetails() {
             { label: 'Full name', value: resident?.fullName ?? '' },
             { label: 'Phone number', value: resident?.phone ?? '' },
             { label: 'Gender', value: resident?.gender ?? '' },
-            { label: 'Kebele ID', value: resident?.kebeleId ?? '' },
-            { label: 'House number', value: resident?.houseNumber ?? '' },
           ]}
         />
       </SectionCard>
@@ -344,14 +317,21 @@ export function StaffAppointmentDetails() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => openFile(file)}
+                  <a
+                    href={browserViewUrl(file.fileUrl)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => {
+                      if (!browserViewUrl(file.fileUrl)) {
+                        e.preventDefault();
+                        setError('File URL is missing or invalid.');
+                      }
+                    }}
                     className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-white border border-gray-200 text-blue-700 hover:bg-blue-50"
                   >
                     <ExternalLink className="w-4 h-4" />
-                    Open file
-                  </button>
+                    Open in browser
+                  </a>
                   <button
                     type="button"
                     onClick={() => downloadFile(file)}
@@ -373,35 +353,6 @@ export function StaffAppointmentDetails() {
         target={statusTarget}
         onUpdated={() => void load()}
       />
-
-      {previewUrl ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.25)] backdrop-blur-[12px] p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label={previewLabel}
-          onClick={() => setPreviewUrl(null)}
-        >
-          <div
-            className="relative max-w-4xl max-h-[90vh] w-full bg-white rounded-xl overflow-hidden shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <span className="text-sm font-medium text-gray-800">{previewLabel}</span>
-              <button
-                type="button"
-                onClick={() => setPreviewUrl(null)}
-                className="text-sm text-gray-600 hover:text-gray-900"
-              >
-                Close
-              </button>
-            </div>
-            <div className="p-4 flex justify-center bg-gray-50 max-h-[calc(90vh-3rem)] overflow-auto">
-              <img src={previewUrl} alt={previewLabel} className="max-w-full max-h-[70vh] object-contain" />
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

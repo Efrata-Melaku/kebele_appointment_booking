@@ -2,7 +2,6 @@ import { createBrowserRouter } from "react-router";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { AdminDashboard } from "./components/admin/AdminDashboard";
 import { ManageStaff } from "./components/admin/ManageStaff";
-import { HouseownerRecords } from "./components/admin/HouseownerRecords";
 import { AppointmentLimits } from "./components/admin/AppointmentLimits";
 import { ScheduleOverrides } from "./components/admin/ScheduleOverrides";
 import { ServicesManagement } from "./components/admin/ServicesManagement";
@@ -38,7 +37,6 @@ export const router = createBrowserRouter([
       { path: "appointments", Component: AdminAppointments },
       { path: "appointments/:id", Component: AdminAppointmentDetails },
       { path: "staff", Component: ManageStaff },
-      { path: "houseowners", Component: HouseownerRecords },
       { path: "limits", Component: AppointmentLimits },
       { path: "schedule", Component: ScheduleOverrides },
       { path: "services", Component: ServicesManagement },

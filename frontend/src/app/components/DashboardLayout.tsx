@@ -2,7 +2,6 @@ import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard,
   Users,
-  Home,
   Calendar,
   Settings as SettingsIcon,
   MessageSquare,
@@ -39,7 +38,6 @@ export function DashboardLayout() {
       { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
       { path: '/admin/appointments', label: 'Appointments', icon: Calendar },
       { path: '/admin/staff', label: 'Manage Staff', icon: Users },
-      { path: '/admin/houseowners', label: 'Houseowner Records', icon: Home },
       { path: '/admin/limits', label: 'Slots sync', icon: Calendar },
       { path: '/admin/schedule', label: 'Schedule overrides', icon: Calendar },
       { path: '/admin/services', label: 'Services', icon: FileText },

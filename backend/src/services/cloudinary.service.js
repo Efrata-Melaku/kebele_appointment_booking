@@ -16,8 +16,9 @@ function assertConfigured() {
   }
 }
 
-function inferResourceType(mimetype) {
+function inferResourceType(mimetype, originalname = '') {
   if (mimetype && mimetype.startsWith('image/')) return 'image';
+  if (mimetype === 'application/pdf' || /\.pdf$/i.test(originalname)) return 'image';
   return 'raw';
 }
 
@@ -31,7 +32,8 @@ async function uploadMulterFile(file, options = {}) {
     throw new Error('Empty file buffer');
   }
 
-  const resourceType = options.resourceType || inferResourceType(file.mimetype);
+  const resourceType =
+    options.resourceType || inferResourceType(file.mimetype, file.originalname);
   const folder = options.folder || DEFAULT_FOLDER;
   const ext = path.extname(file.originalname || '').toLowerCase();
   const baseName = path.basename(file.originalname || 'document', ext);

@@ -1,14 +1,62 @@
 import { getToken } from './auth';
 
-// const baseUrl = () => import.meta.env.VITE_API_URL || '';
-const baseUrl = () => 'http://localhost:5000';
+export const apiBaseUrl = () =>
+  (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+
+/** Normalize stored file paths (Cloudinary URL, /uploads/…, or JSON with fileUrl). */
+export function normalizeUploadPath(path: string | null | undefined): string {
+  if (!path) return '';
+  let s = String(path).trim();
+  if (!s) return '';
+
+  if ((s.startsWith('{') || s.startsWith('[')) && s.includes('fileUrl')) {
+    try {
+      const parsed = JSON.parse(s) as { fileUrl?: string };
+      if (parsed?.fileUrl) return normalizeUploadPath(parsed.fileUrl);
+    } catch {
+      /* use raw string */
+    }
+  }
+
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('uploads/')) return `/${s}`;
+  return s;
+}
 
 /** Resolve stored upload paths (e.g. /uploads/documents/…) to absolute URLs. */
 export function resolveUploadUrl(path: string | null | undefined): string {
-  if (!path) return '';
-  if (/^https?:\/\//i.test(path)) return path;
-  const base = baseUrl().replace(/\/$/, '');
-  return path.startsWith('/') ? `${base}${path}` : `${base}/${path}`;
+  const normalized = normalizeUploadPath(path);
+  if (!normalized) return '';
+  if (/^https?:\/\//i.test(normalized)) return normalized;
+  const base = apiBaseUrl();
+  return normalized.startsWith('/') ? `${base}${normalized}` : `${base}/${normalized}`;
+}
+
+/**
+ * URL suited for inline viewing in a new browser tab (PDFs/images).
+ * Cloudinary "raw" uploads often force download; "image" delivery opens in the browser.
+ */
+export function browserViewUrl(path: string | null | undefined): string {
+  const url = resolveUploadUrl(path);
+  if (!url) return '';
+  if (url.includes('res.cloudinary.com') && url.includes('/raw/upload/')) {
+    return url.replace('/raw/upload/', '/image/upload/');
+  }
+  return url;
+}
+
+/** Open a file in a new browser tab (inline when the server allows it). */
+export function openFileInBrowser(path: string | null | undefined): boolean {
+  const url = browserViewUrl(path);
+  if (!url) return false;
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  return true;
 }
 
 export type ApiEnvelope<T = unknown> = {
@@ -24,7 +72,7 @@ export async function apiFetch(path: string, init: RequestInit & { skipAuth?: bo
   if (!init.skipAuth && token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  const res = await fetch(`${baseUrl()}${path}`, {
+  const res = await fetch(`${apiBaseUrl()}${path}`, {
     ...init,
     headers,
   });

@@ -56,10 +56,8 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Legacy local uploads — new files are stored in Cloudinary only
-if (process.env.SERVE_LEGACY_UPLOADS === 'true') {
-  app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-}
+// Locally stored uploads (legacy bookings). New uploads use Cloudinary URLs directly.
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });

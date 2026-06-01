@@ -1,5 +1,6 @@
 const submissionModel = require('../models/serviceFormSubmission.model');
 const submissionValueModel = require('../models/serviceFormSubmissionValue.model');
+const { normalizeStoredFileUrl } = require('../utils/uploadUrl');
 
 function coerceDisplayValue(fieldType, stored) {
   if (stored == null || stored === '') return null;
@@ -295,22 +296,30 @@ async function loadUploadedFilesForAppointment(appointmentId) {
   });
 }
 
+function pushUploadedFile(uploadedFiles, seenUrls, entry) {
+  const fileUrl = normalizeStoredFileUrl(entry.fileUrl);
+  if (!fileUrl || seenUrls.has(fileUrl)) return;
+  uploadedFiles.push({
+    ...entry,
+    fileUrl,
+    fileName: entry.fileName || fileNameFromUrl(fileUrl),
+  });
+  seenUrls.add(fileUrl);
+}
+
 function formatStaffFormPayload(formResponses, uploadedFileRows = []) {
   const uploadedFiles = [];
   const seenUrls = new Set();
 
   for (const uf of uploadedFileRows) {
     const label = uf.submissionValue?.formField?.label || 'Document';
-    if (!seenUrls.has(uf.fileUrl)) {
-      uploadedFiles.push({
-        id: uf.id,
-        fieldLabel: label,
-        fileUrl: uf.fileUrl,
-        fileName: uf.fileName,
-        fileType: uf.fileType,
-      });
-      seenUrls.add(uf.fileUrl);
-    }
+    pushUploadedFile(uploadedFiles, seenUrls, {
+      id: uf.id,
+      fieldLabel: label,
+      fileUrl: uf.fileUrl,
+      fileName: uf.fileName,
+      fileType: uf.fileType,
+    });
   }
 
   const formatted = (formResponses || []).map((r) => {
@@ -321,23 +330,22 @@ function formatStaffFormPayload(formResponses, uploadedFileRows = []) {
 
     if (fieldType === 'file' && raw) {
       const matched = uploadedFileRows.find((uf) => uf.submissionValue?.formFieldId === r.formFieldId);
-      const fileUrl = matched?.fileUrl || raw;
+      const fileUrl = normalizeStoredFileUrl(matched?.fileUrl || raw);
       const fileName = matched?.fileName || fileNameFromUrl(fileUrl);
-      if (!seenUrls.has(fileUrl)) {
-        uploadedFiles.push({
+      if (fileUrl) {
+        pushUploadedFile(uploadedFiles, seenUrls, {
           id: matched?.id,
           fieldLabel,
           fileUrl,
           fileName,
           fileType: matched?.fileType || null,
         });
-        seenUrls.add(fileUrl);
       }
       return {
         fieldLabel,
         fieldType: 'file',
         value: fileName,
-        fileUrl,
+        fileUrl: fileUrl || '',
         fileName,
       };
     }
