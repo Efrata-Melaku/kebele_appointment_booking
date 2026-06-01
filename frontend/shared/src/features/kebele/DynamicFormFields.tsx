@@ -22,7 +22,7 @@ import {
 import { parseFieldOptions, type ServiceFormFieldDef } from './formTypes';
 import { responseFieldPath } from './formPaths';
 import { uploadFileToCloudinary, type UploadedFileMeta } from './uploadFile';
-import { resolveUploadUrl } from '@kebele/shared/lib/api';
+import { browserViewUrl } from '@kebele/shared/lib/api';
 
 function getResponseError(errors: FieldErrors, fieldId: number): string | undefined {
   const responses = errors.responses;
@@ -281,7 +281,7 @@ function FileFieldInput({
         <p className="truncate text-xs text-muted-foreground">
           Uploaded:{' '}
           <a
-            href={resolveUploadUrl(meta.fileUrl)}
+            href={browserViewUrl(meta.fileUrl)}
             target="_blank"
             rel="noreferrer"
             className="underline"

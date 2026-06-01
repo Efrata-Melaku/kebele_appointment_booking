@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router';
 import { Lock, Mail } from 'lucide-react';
 import { apiFetch } from '@kebele/shared/lib/api';
 import { setAuthSession, type AuthUser } from '@kebele/shared/lib/auth';
+import { KebeleLogo } from '@kebele/shared/components/KebeleLogo';
 import { managementHomeForRole } from '@/lib/routes';
 
 type LoginResponse = {
@@ -56,6 +57,9 @@ export function PortalLoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8">
+        <div className="flex justify-center mb-6">
+          <KebeleLogo size="xl" showText={false} />
+        </div>
         <h1 className="text-2xl text-gray-800 mb-2 text-center">Management portal</h1>
         <p className="text-sm text-gray-600 mb-8 text-center">
           Sign in as administrator or staff

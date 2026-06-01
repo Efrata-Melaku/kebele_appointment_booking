@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Calendar, ClipboardList, ExternalLink, FileText, History, Loader2, Paperclip, Pencil, User } from 'lucide-react';
-import { apiFetch, browserViewUrl } from '@kebele/shared/lib/api';
+import { Calendar, ClipboardList, FileText, History, Loader2, Paperclip, Pencil, User } from 'lucide-react';
+import { apiFetch } from '@kebele/shared/lib/api';
+import { DocumentPreview } from '@kebele/shared/components/DocumentPreview';
 import { statusBadgeClass, statusLabel, type StaffStatusTarget } from '@kebele/shared/lib/staffAppointmentStatus';
 import {
   Dialog,
@@ -237,34 +238,17 @@ export function StaffAppointmentViewModal({
                       <p className="text-gray-900 mt-1 whitespace-pre-wrap">{row.value || '—'}</p>
                     </div>
                   ))}
-                  {fileResponses.map((row, idx) => (
-                    <div
-                      key={`file-${row.fieldLabel}-${idx}`}
-                      className="px-4 py-3 flex items-center justify-between gap-3 text-sm"
-                    >
-                      <div>
-                        <p className="font-medium text-gray-700">{row.fieldLabel}</p>
-                        <p className="text-gray-500 text-xs">{row.fileName || 'File'}</p>
+                  {fileResponses.map((row, idx) =>
+                    row.fileUrl ? (
+                      <div key={`file-${row.fieldLabel}-${idx}`} className="px-4 py-3 text-sm">
+                        <p className="font-medium text-gray-700 mb-2">{row.fieldLabel}</p>
+                        <DocumentPreview
+                          fileUrl={row.fileUrl}
+                          fileName={row.fileName || 'File'}
+                        />
                       </div>
-                      {row.fileUrl ? (
-                        <a
-                          href={browserViewUrl(row.fileUrl)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => {
-                            if (!browserViewUrl(row.fileUrl)) {
-                              e.preventDefault();
-                              setError('File URL is missing or invalid.');
-                            }
-                          }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-blue-700 hover:bg-blue-50"
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          Open in browser
-                        </a>
-                      ) : null}
-                    </div>
-                  ))}
+                    ) : null
+                  )}
                 </div>
               )}
             </section>
@@ -304,34 +288,14 @@ export function StaffAppointmentViewModal({
               {detail.uploadedFiles.length === 0 ? (
                 <p className="text-sm text-gray-500">No uploaded files.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-4">
                   {detail.uploadedFiles.map((file) => (
-                    <div
-                      key={`${file.fieldLabel}-${file.fileUrl}`}
-                      className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
+                    <div key={`${file.fieldLabel}-${file.fileUrl}`}>
+                      <p className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
                         <FileText className="h-4 w-4 text-blue-600 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{file.fieldLabel}</p>
-                          <p className="text-xs text-gray-500 truncate">{file.fileName}</p>
-                        </div>
-                      </div>
-                      <a
-                        href={browserViewUrl(file.fileUrl)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => {
-                          if (!browserViewUrl(file.fileUrl)) {
-                            e.preventDefault();
-                            setError('File URL is missing or invalid.');
-                          }
-                        }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 text-blue-700 hover:bg-blue-50 shrink-0"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        Open in browser
-                      </a>
+                        {file.fieldLabel}
+                      </p>
+                      <DocumentPreview fileUrl={file.fileUrl} fileName={file.fileName} />
                     </div>
                   ))}
                 </div>

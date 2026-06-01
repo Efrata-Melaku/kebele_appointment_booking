@@ -8,6 +8,7 @@ import {
   Briefcase,
   ArrowRight,
 } from 'lucide-react';
+import { KebeleLogo } from '@kebele/shared/components/KebeleLogo';
 import { residentRoutes } from '@/lib/routes';
 
 const actions = [
@@ -59,6 +60,12 @@ export function ResidentHome() {
   return (
     <div className="space-y-10">
       <section className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-8 md:p-12 text-white">
+        <KebeleLogo
+          size="lg"
+          showText={false}
+          className="mb-6"
+          imageClassName="ring-2 ring-white/30"
+        />
         <h1 className="text-3xl md:text-4xl font-semibold mb-3">Welcome to Kebele appointments</h1>
         <p className="text-blue-100 max-w-2xl mb-8">
           Book, track, edit, or cancel your appointments online. No account required — use the phone

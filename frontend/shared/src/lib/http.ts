@@ -1,28 +1,39 @@
-import axios from 'axios';
+import axios, { AxiosHeaders } from 'axios';
 import { getToken } from './auth';
+import { apiBaseUrl } from './apiBaseUrl';
 
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: apiBaseUrl(),
 });
 
 http.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  // Let the browser set multipart boundary — never send bare multipart/form-data
-  if (config.data instanceof FormData && config.headers) {
-    const h = config.headers as Record<string, unknown> & {
-      delete?: (name: string) => boolean;
-    };
-    if (typeof h.delete === 'function') {
-      h.delete('Content-Type');
+    if (config.headers instanceof AxiosHeaders) {
+      config.headers.set('Authorization', `Bearer ${token}`);
     } else {
-      delete h['Content-Type'];
+      config.headers = config.headers || {};
+      (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
     }
   }
+
+  if (config.data instanceof FormData) {
+    if (config.headers instanceof AxiosHeaders) {
+      config.headers.delete('Content-Type');
+    } else if (config.headers) {
+      delete (config.headers as Record<string, unknown>)['Content-Type'];
+    }
+  } else {
+    if (config.headers instanceof AxiosHeaders) {
+      if (!config.headers.has('Content-Type')) {
+        config.headers.set('Content-Type', 'application/json');
+      }
+    } else {
+      config.headers = config.headers || {};
+      const h = config.headers as Record<string, string>;
+      if (!h['Content-Type']) h['Content-Type'] = 'application/json';
+    }
+  }
+
   return config;
 });

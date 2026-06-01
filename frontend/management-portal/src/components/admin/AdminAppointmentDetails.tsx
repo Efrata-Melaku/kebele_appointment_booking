@@ -10,7 +10,8 @@ import {
   Star,
   User,
 } from 'lucide-react';
-import { apiFetch, browserViewUrl } from '@kebele/shared/lib/api';
+import { apiFetch } from '@kebele/shared/lib/api';
+import { DocumentPreview } from '@kebele/shared/components/DocumentPreview';
 
 type Detail = {
   appointment: {
@@ -226,20 +227,16 @@ export function AdminAppointmentDetails() {
           <h3 className="flex items-center gap-2 font-medium text-gray-900 mb-4">
             <Paperclip className="h-5 w-5 text-blue-600" /> Documents
           </h3>
-          <ul className="space-y-2 text-sm">
+          <div className="space-y-6">
             {uploadedFiles.map((f, i) => (
-              <li key={i}>
-                <a
-                  href={browserViewUrl(f.fileUrl)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
-                >
+              <div key={i}>
+                <p className="text-sm font-medium text-gray-700 mb-2">
                   {f.fieldLabel}: {f.fileName}
-                </a>
-              </li>
+                </p>
+                <DocumentPreview fileUrl={f.fileUrl} fileName={f.fileName} />
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       ) : null}
 

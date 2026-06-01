@@ -34,6 +34,6 @@ export default defineConfig(({ mode }) => {
         '/uploads': { target: proxyTarget, changeOrigin: true },
       },
     },
-    assetsInclude: ['**/*.svg', '**/*.csv'],
+    assetsInclude: ['**/*.svg', '**/*.csv', '**/*.png'],
   };
 });

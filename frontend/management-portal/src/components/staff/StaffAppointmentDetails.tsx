@@ -3,8 +3,6 @@ import { Link, useParams } from 'react-router';
 import { managementRoutes } from '@/lib/routes';
 import {
   ArrowLeft,
-  Download,
-  ExternalLink,
   FileText,
   Loader2,
   User,
@@ -14,7 +12,8 @@ import {
   History,
   Pencil,
 } from 'lucide-react';
-import { apiFetch, browserViewUrl, resolveUploadUrl } from '@kebele/shared/lib/api';
+import { apiFetch } from '@kebele/shared/lib/api';
+import { DocumentPreview } from '@kebele/shared/components/DocumentPreview';
 import { statusBadgeClass, statusLabel, type StaffStatusTarget } from '@kebele/shared/lib/staffAppointmentStatus';
 import { Button } from '@kebele/shared/components/ui/button';
 import { StaffStatusUpdateModal } from './StaffStatusUpdateModal';
@@ -149,22 +148,6 @@ export function StaffAppointmentDetails() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  function downloadFile(file: UploadedFile) {
-    const url = resolveUploadUrl(file.fileUrl);
-    if (!url) {
-      setError('File URL is missing or invalid.');
-      return;
-    }
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.fileName || 'download';
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
 
   if (loading) {
     return (
@@ -304,44 +287,17 @@ export function StaffAppointmentDetails() {
         {uploadedFiles.length === 0 ? (
           <p className="text-sm text-gray-500">No files uploaded.</p>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-6">
             {uploadedFiles.map((file) => (
-              <div
-                key={`${file.fieldLabel}-${file.fileUrl}`}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-lg border border-gray-100 bg-gray-50"
-              >
-                <div className="flex items-start gap-3 min-w-0">
-                  <FileText className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800">{file.fieldLabel}</p>
-                    <p className="text-xs text-gray-500 truncate">{file.fileName}</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2 shrink-0">
-                  <a
-                    href={browserViewUrl(file.fileUrl)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => {
-                      if (!browserViewUrl(file.fileUrl)) {
-                        e.preventDefault();
-                        setError('File URL is missing or invalid.');
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-white border border-gray-200 text-blue-700 hover:bg-blue-50"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    Open in browser
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => downloadFile(file)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    <Download className="w-4 h-4" />
-                    Download
-                  </button>
-                </div>
+              <div key={`${file.fieldLabel}-${file.fileUrl}`}>
+                <p className="text-sm font-medium text-gray-800 mb-2 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                  {file.fieldLabel}
+                </p>
+                <DocumentPreview
+                  fileUrl={file.fileUrl}
+                  fileName={file.fileName}
+                />
               </div>
             ))}
           </div>

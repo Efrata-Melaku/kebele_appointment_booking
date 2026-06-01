@@ -1,7 +1,7 @@
 import { getToken } from './auth';
+import { apiBaseUrl } from './apiBaseUrl';
 
-export const apiBaseUrl = () =>
-  (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+export { apiBaseUrl };
 
 /** Normalize stored file paths (Cloudinary URL, /uploads/…, or JSON with fileUrl). */
 export function normalizeUploadPath(path: string | null | undefined): string {
@@ -32,17 +32,30 @@ export function resolveUploadUrl(path: string | null | undefined): string {
   return normalized.startsWith('/') ? `${base}${normalized}` : `${base}/${normalized}`;
 }
 
+/** Cloudinary URL with inline delivery (no forced download). */
+function cloudinaryInlineUrl(url: string): string {
+  if (!url.includes('res.cloudinary.com')) return url;
+  if (url.includes('fl_attachment:false')) return url;
+
+  if (url.includes('/raw/upload/')) {
+    return url.replace('/raw/upload/', '/image/upload/fl_attachment:false/');
+  }
+  if (url.includes('/image/upload/')) {
+    return url.replace('/image/upload/', '/image/upload/fl_attachment:false/');
+  }
+  if (url.includes('/upload/')) {
+    return url.replace('/upload/', '/upload/fl_attachment:false/');
+  }
+  return url;
+}
+
 /**
- * URL suited for inline viewing in a new browser tab (PDFs/images).
- * Cloudinary "raw" uploads often force download; "image" delivery opens in the browser.
+ * URL suited for inline viewing in browser (PDFs/images).
  */
 export function browserViewUrl(path: string | null | undefined): string {
   const url = resolveUploadUrl(path);
   if (!url) return '';
-  if (url.includes('res.cloudinary.com') && url.includes('/raw/upload/')) {
-    return url.replace('/raw/upload/', '/image/upload/');
-  }
-  return url;
+  return cloudinaryInlineUrl(url);
 }
 
 /** Open a file in a new browser tab (inline when the server allows it). */
