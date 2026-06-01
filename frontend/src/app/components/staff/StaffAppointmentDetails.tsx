@@ -362,7 +362,7 @@ export function StaffAppointmentDetails() {
 
       {previewUrl ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.25)] backdrop-blur-[12px] p-4"
           role="dialog"
           aria-modal="true"
           aria-label={previewLabel}

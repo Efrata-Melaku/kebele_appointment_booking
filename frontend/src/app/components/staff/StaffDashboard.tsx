@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { Eye, Loader2 } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
+import { DEFAULT_PAGE_LIMIT, parsePaginatedBody, type PaginationMeta } from '../../../lib/pagination';
+import { PaginationBar } from '../ui/PaginationBar';
+import { TableSkeleton } from '../ui/ListSkeleton';
 
 type Apt = {
   id: number;
@@ -32,29 +35,50 @@ function statusBadgeClass(status: string) {
 export function StaffDashboard() {
   const [appointments, setAppointments] = useState<Apt[]>([]);
   const [filter, setFilter] = useState<(typeof STATUS_OPTIONS)[number]['key']>('all');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    limit: DEFAULT_PAGE_LIMIT,
+    totalRecords: 0,
+    totalPages: 1,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  async function load() {
+  const queryString = useMemo(() => {
+    const q = new URLSearchParams();
+    q.set('page', String(page));
+    q.set('limit', String(DEFAULT_PAGE_LIMIT));
+    if (filter !== 'all') q.set('status', filter);
+    return q.toString();
+  }, [page, filter]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
     setError('');
     try {
-      const { res, body } = await apiFetch('/api/staff/appointments');
-      if (!res.ok || !body?.success || !body.data) throw new Error((body?.error as string) || 'Failed');
-      setAppointments(body.data as Apt[]);
+      const { res, body } = await apiFetch(`/api/staff/appointments?${queryString}`);
+      if (!res.ok || !body?.success) throw new Error((body?.error as string) || 'Failed');
+      const { items, pagination: meta } = parsePaginatedBody<Apt>(
+        body as { success?: boolean; data?: Apt[]; pagination?: PaginationMeta }
+      );
+      setAppointments(items);
+      setPagination(meta);
+      setPage(meta.page);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Load failed');
     } finally {
       setLoading(false);
     }
-  }
+  }, [queryString]);
 
   useEffect(() => {
-    load();
-  }, []);
+    void load();
+  }, [load]);
 
-  const norm = (s: string) => s.toUpperCase();
-  const filtered =
-    filter === 'all' ? appointments : appointments.filter((a) => norm(a.status) === norm(filter));
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
 
   const formatDate = (iso?: string) => (iso ? new Date(iso).toLocaleDateString() : '—');
   const formatTime = (iso?: string) =>
@@ -69,16 +93,9 @@ export function StaffDashboard() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl text-gray-800">Appointments</h2>
-        <p className="text-gray-600 text-sm">
-          Appointments for services you are assigned to
-        </p>
+        <p className="text-gray-600 text-sm">Appointments for services you are assigned to</p>
       </div>
 
-      {loading ? (
-        <div className="flex items-center gap-2 text-gray-500">
-          <Loader2 className="w-5 h-5 animate-spin" /> Loading…
-        </div>
-      ) : null}
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       ) : null}
@@ -99,58 +116,60 @@ export function StaffDashboard() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Appointment #</th>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Resident</th>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Phone</th>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Service</th>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Date</th>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Time</th>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Status</th>
-                <th className="text-left py-4 px-6 text-sm text-gray-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
+        {loading ? (
+          <TableSkeleton rows={7} cols={6} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
                 <tr>
-                  <td className="py-12 px-6 text-center text-gray-500" colSpan={8}>
-                    No appointments found
-                  </td>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Appointment #</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Resident</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Service</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Date</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Time</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Status</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Actions</th>
                 </tr>
-              ) : (
-                filtered.map((apt) => (
-                  <tr key={apt.id} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="py-4 px-6 text-sm font-mono text-gray-800">{apt.appointmentNumber}</td>
-                    <td className="py-4 px-6 text-sm text-gray-800">{apt.resident?.fullName ?? '—'}</td>
-                    <td className="py-4 px-6 text-sm text-gray-600">{apt.resident?.phone ?? '—'}</td>
-                    <td className="py-4 px-6 text-sm text-gray-600">{apt.service?.name ?? '—'}</td>
-                    <td className="py-4 px-6 text-sm text-gray-600">{formatDate(apt.timeSlot?.date)}</td>
-                    <td className="py-4 px-6 text-sm text-gray-600">{formatTime(apt.timeSlot?.startTime)}</td>
-                    <td className="py-4 px-6">
-                      <span
-                        className={`inline-block px-2 py-1 rounded text-xs font-medium uppercase ${statusBadgeClass(apt.status)}`}
-                      >
-                        {apt.status}
-                      </span>
-                    </td>
-                    <td className="py-4 px-6">
-                      <Link
-                        to={`/staff/appointments/${apt.id}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                        View details
-                      </Link>
+              </thead>
+              <tbody>
+                {appointments.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-gray-500">
+                      No appointments
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  appointments.map((apt) => (
+                    <tr key={apt.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="py-4 px-6 text-sm font-mono">{apt.appointmentNumber}</td>
+                      <td className="py-4 px-6 text-sm">{apt.resident?.fullName ?? '—'}</td>
+                      <td className="py-4 px-6 text-sm">{apt.service?.name ?? '—'}</td>
+                      <td className="py-4 px-6 text-sm">{formatDate(apt.timeSlot?.date)}</td>
+                      <td className="py-4 px-6 text-sm">{formatTime(apt.timeSlot?.startTime)}</td>
+                      <td className="py-4 px-6">
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs ${statusBadgeClass(apt.status)}`}
+                        >
+                          {apt.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <Link
+                          to={`/staff/appointments/${apt.id}`}
+                          className="inline-flex items-center gap-1 text-blue-600 hover:underline text-sm"
+                        >
+                          <Eye className="w-4 h-4" /> View
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <PaginationBar pagination={pagination} loading={loading} onPageChange={setPage} />
       </div>
     </div>
   );

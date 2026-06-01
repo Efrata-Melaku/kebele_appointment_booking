@@ -16,6 +16,14 @@ import {
   SelectValue,
 } from '../ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
+import {
   FORM_FIELD_TYPES,
   parseFieldOptions,
   type FormFieldType,
@@ -236,8 +244,14 @@ export function ServiceFormBuilder() {
         setMessage('Field created');
       }
 
-      setShowEditor(false);
       if (serviceId !== '') await loadFields(serviceId);
+      if (editingId != null) {
+        setShowEditor(false);
+      } else {
+        setDraft(emptyDraft());
+        setEditingId(null);
+        setMessage('Field saved. Add another field or click Done when finished.');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -352,75 +366,101 @@ export function ServiceFormBuilder() {
         </div>
       ) : null}
 
-      {showEditor ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-xl">{editingId != null ? 'Edit field' : 'New field'}</h3>
-            <div className="space-y-4">
+      <Dialog
+        open={showEditor}
+        onOpenChange={(open) => {
+          if (!saving) setShowEditor(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-[600px] gap-0 p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle>{editingId != null ? 'Edit form field' : 'Add form field'}</DialogTitle>
+            <DialogDescription>
+              {editingId != null
+                ? 'Update this field. Existing appointment answers are preserved.'
+                : 'Configure a field for the booking form. Save to add more fields without closing.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 px-6 py-2 max-h-[min(60vh,520px)] overflow-y-auto">
+            <div>
+              <Label>Label</Label>
+              <Input
+                className="mt-1"
+                value={draft.label}
+                onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
+                placeholder="e.g. Full name"
+              />
+            </div>
+            <div>
+              <Label>Type</Label>
+              <Select
+                value={draft.fieldType}
+                onValueChange={(v) => setDraft((d) => ({ ...d, fieldType: v as FormFieldType }))}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="z-[70]">
+                  {FORM_FIELD_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Placeholder (optional)</Label>
+              <Input
+                className="mt-1"
+                value={draft.placeholder}
+                onChange={(e) => setDraft((d) => ({ ...d, placeholder: e.target.value }))}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={draft.required}
+                onCheckedChange={(c) => setDraft((d) => ({ ...d, required: Boolean(c) }))}
+              />
+              Required
+            </label>
+            {(draft.fieldType === 'select' || draft.fieldType === 'radio') && (
               <div>
-                <Label>Label</Label>
+                <Label>Options (comma-separated)</Label>
                 <Input
                   className="mt-1"
-                  value={draft.label}
-                  onChange={(e) => setDraft((d) => ({ ...d, label: e.target.value }))}
+                  value={draft.optionsText}
+                  onChange={(e) => setDraft((d) => ({ ...d, optionsText: e.target.value }))}
+                  placeholder="Male, Female"
                 />
               </div>
-              <div>
-                <Label>Type</Label>
-                <Select
-                  value={draft.fieldType}
-                  onValueChange={(v) => setDraft((d) => ({ ...d, fieldType: v as FormFieldType }))}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FORM_FIELD_TYPES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Placeholder (optional)</Label>
-                <Input
-                  className="mt-1"
-                  value={draft.placeholder}
-                  onChange={(e) => setDraft((d) => ({ ...d, placeholder: e.target.value }))}
-                />
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.required}
-                  onCheckedChange={(c) => setDraft((d) => ({ ...d, required: Boolean(c) }))}
-                />
-                Required
-              </label>
-              {(draft.fieldType === 'select' || draft.fieldType === 'radio') && (
-                <div>
-                  <Label>Options (comma-separated)</Label>
-                  <Input
-                    className="mt-1"
-                    value={draft.optionsText}
-                    onChange={(e) => setDraft((d) => ({ ...d, optionsText: e.target.value }))}
-                    placeholder="Male, Female"
-                  />
-                </div>
-              )}
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setShowEditor(false)}>
-                Cancel
-              </Button>
-              <Button type="button" disabled={saving} onClick={() => void saveField()}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-              </Button>
-            </div>
+            )}
           </div>
-        </div>
-      ) : null}
+
+          <DialogFooter className="px-6 py-4 border-t bg-gray-50/80 flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            <Button type="button" variant="ghost" disabled={saving} onClick={() => setShowEditor(false)}>
+              {editingId != null ? 'Cancel' : 'Done'}
+            </Button>
+            <div className="flex flex-wrap gap-2 justify-end">
+              {editingId == null ? (
+                <Button type="button" variant="outline" disabled={saving} onClick={() => void saveField()}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add another field'}
+                </Button>
+              ) : null}
+              <Button type="button" disabled={saving} onClick={() => void saveField()}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : editingId != null ? (
+                  'Save changes'
+                ) : (
+                  'Save field'
+                )}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

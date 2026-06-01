@@ -16,6 +16,8 @@ const {
   assertPhoneMatchesResident,
   normalizeEthiopianPhone,
 } = require('../utils/ethiopianPhone');
+const { resolveDateFilterRange } = require('../utils/dateRange');
+const { parsePagination, buildPaginationMeta } = require('../utils/pagination');
 
 const BOOKING_TRANSACTION_OPTIONS = {
   isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -141,16 +143,9 @@ function buildAdminWhere(filters) {
   if (filters.departmentId) {
     where.service = { departmentId: Number(filters.departmentId) };
   }
-  if (filters.dateFrom || filters.dateTo) {
-    where.slotDate = {};
-    if (filters.dateFrom) {
-      where.slotDate.gte = new Date(filters.dateFrom);
-    }
-    if (filters.dateTo) {
-      const end = new Date(filters.dateTo);
-      end.setHours(23, 59, 59, 999);
-      where.slotDate.lte = end;
-    }
+  const slotDateRange = resolveDateFilterRange(filters);
+  if (slotDateRange) {
+    where.slotDate = slotDateRange;
   }
   if (filters.appointmentNumber?.trim()) {
     groupWhere.appointmentNumber = { contains: filters.appointmentNumber.trim() };
@@ -536,29 +531,50 @@ class AppointmentService {
     return formSubmissionService.attachSubmissionsToMany(withSlots);
   }
 
-  async getStaffAppointments(staffUserId) {
+  async getStaffAppointments(staffUserId, query = {}) {
     const assignments = await userModel.findStaffAssignments({ staffUserId }, {
       select: { serviceId: true },
     });
     const serviceIds = [...new Set(assignments.map((a) => a.serviceId))];
 
     if (serviceIds.length === 0) {
-      return [];
+      const { page, limit } = parsePagination(query);
+      return { items: [], pagination: buildPaginationMeta({ page, limit, total: 0 }) };
     }
 
-    const rows = await appointmentModel.findManyAppointments({
-      where: {
-        serviceId: { in: serviceIds },
-      },
-      include: appointmentInclude,
-      orderBy: { createdAt: 'desc' },
-    });
+    const where = { serviceId: { in: serviceIds } };
+    const slotDateRange = resolveDateFilterRange(query);
+    if (slotDateRange) {
+      where.slotDate = slotDateRange;
+    }
+    if (query.status) {
+      where.status = String(query.status).toUpperCase();
+    }
+
+    const { page, limit, skip } = parsePagination(query);
+
+    const [total, rows] = await Promise.all([
+      appointmentModel.countAppointments(where),
+      appointmentModel.findManyAppointments({
+        where,
+        skip,
+        take: limit,
+        include: appointmentInclude,
+        orderBy: { slotDate: 'desc' },
+      }),
+    ]);
+
     const mapped = attachTimeSlotMany(rows).map((a) => {
       const flat = withPublicNumber(a);
       delete flat.feedback;
       return flat;
     });
-    return formSubmissionService.attachSubmissionsToMany(mapped);
+    const items = await formSubmissionService.attachSubmissionsToMany(mapped);
+
+    return {
+      items,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    };
   }
 
   async getAppointmentGroupBundleByNumber(appointmentNumber) {
@@ -936,27 +952,23 @@ class AppointmentService {
   }
 
   async listAdminAppointments(filters = {}) {
-    const page = Math.max(1, Number(filters.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 20));
+    const { page, limit, skip } = parsePagination(filters);
     const where = buildAdminWhere(filters);
 
     const [total, rows] = await Promise.all([
       appointmentModel.countAppointments(where),
       appointmentModel.findManyAppointments({
         where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        orderBy: [{ slotDate: 'desc' }, { createdAt: 'desc' }],
         include: appointmentInclude,
       }),
     ]);
 
     return {
       items: rows.map(mapAdminListRow),
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize) || 1,
+      pagination: buildPaginationMeta({ page, limit, total }),
     };
   }
 

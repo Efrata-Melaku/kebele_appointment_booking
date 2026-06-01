@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { clearAuthSession, getAuthUser } from '../../lib/auth';
+import { MOBILE_MENU_BACKDROP_CLASS } from './ui/modalStyles';
 
 export function DashboardLayout() {
   const location = useLocation();
@@ -159,7 +160,7 @@ export function DashboardLayout() {
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+          className={MOBILE_MENU_BACKDROP_CLASS}
         />
       )}
     </div>

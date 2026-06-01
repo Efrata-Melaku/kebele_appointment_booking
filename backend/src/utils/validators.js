@@ -35,7 +35,7 @@ const registerStaffSchema = Joi.object({
   name: Joi.string().min(2).max(100).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(6).required(),
-  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).required(),
+  phone: ethiopianPhoneField(true),
   departmentId: Joi.number().integer().positive().required(),
   serviceIds: Joi.array().items(Joi.number().integer().positive()).min(1).required(),
 });
@@ -44,11 +44,38 @@ const updateStaffSchema = Joi.object({
   name: Joi.string().min(2).max(100).optional(),
   email: Joi.string().email().optional(),
   password: Joi.string().min(6).allow('', null).optional(),
-  phone: Joi.string().pattern(/^[0-9+\-\s()]+$/).allow('', null).optional(),
-  departmentId: Joi.number().integer().positive().allow(null).optional(),
-  serviceIds: Joi.array().items(Joi.number().integer().positive()).optional(),
+  phone: ethiopianPhoneField(false),
+  departmentId: Joi.number().integer().positive().optional(),
+  serviceIds: Joi.array().items(Joi.number().integer().positive()).min(1).optional(),
   isActive: Joi.boolean().optional(),
 }).min(1);
+
+const paginationQueryFields = {
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(7),
+  pageSize: Joi.number().integer().min(1).max(100).optional(),
+};
+
+const listStaffQuerySchema = Joi.object({
+  ...paginationQueryFields,
+  search: Joi.string().trim().max(200).optional(),
+});
+
+const listResidentsQuerySchema = Joi.object({
+  ...paginationQueryFields,
+  search: Joi.string().trim().max(200).optional(),
+});
+
+const staffAppointmentsQuerySchema = Joi.object({
+  ...paginationQueryFields,
+  status: Joi.string()
+    .valid('PENDING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NOT_SERVED', 'pending', 'completed', 'cancelled', 'rescheduled', 'not_served')
+    .optional(),
+  datePreset: Joi.string().valid('today', 'week', 'month').optional(),
+  slotDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
 
 // Department validators
 const createDepartmentSchema = Joi.object({
@@ -224,14 +251,15 @@ const residentFeedbackQuerySchema = Joi.object({
 });
 
 const adminAppointmentsQuerySchema = Joi.object({
-  page: Joi.number().integer().min(1).default(1),
-  pageSize: Joi.number().integer().min(1).max(100).default(20),
+  ...paginationQueryFields,
   search: Joi.string().trim().max(200).optional(),
   departmentId: Joi.number().integer().positive().optional(),
   serviceId: Joi.number().integer().positive().optional(),
   status: Joi.string()
     .valid('PENDING', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NOT_SERVED')
     .optional(),
+  datePreset: Joi.string().valid('today', 'week', 'month').optional(),
+  slotDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dateFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dateTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
   residentName: Joi.string().trim().max(100).optional(),
@@ -240,11 +268,11 @@ const adminAppointmentsQuerySchema = Joi.object({
 });
 
 const adminFeedbackQuerySchema = Joi.object({
-  page: Joi.number().integer().min(1).default(1),
-  pageSize: Joi.number().integer().min(1).max(100).default(20),
+  ...paginationQueryFields,
   departmentId: Joi.number().integer().positive().optional(),
   serviceId: Joi.number().integer().positive().optional(),
   rating: Joi.number().integer().min(1).max(5).optional(),
+  datePreset: Joi.string().valid('today', 'week', 'month').optional(),
   dateFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dateTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
@@ -321,6 +349,9 @@ module.exports = {
   residentCreateFeedbackSchema,
   residentUpdateFeedbackSchema,
   residentFeedbackQuerySchema,
+  listStaffQuerySchema,
+  listResidentsQuerySchema,
+  staffAppointmentsQuerySchema,
   adminAppointmentsQuerySchema,
   adminFeedbackQuerySchema,
   updateAppointmentStatusSchema,

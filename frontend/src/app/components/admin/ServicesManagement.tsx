@@ -443,7 +443,7 @@ export function ServicesManagement() {
       ) : null}
 
       {showDeptModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.25)] backdrop-blur-[12px] p-4">
           <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-lg">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-xl text-gray-800">New department</h3>
@@ -502,7 +502,7 @@ export function ServicesManagement() {
       )}
 
       {showServiceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.25)] backdrop-blur-[12px] p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-lg">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-xl text-gray-800">

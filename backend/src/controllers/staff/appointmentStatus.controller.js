@@ -1,6 +1,6 @@
 const appointmentService = require('../../services/appointment.service');
 const { APPOINTMENT_STATUS } = require('../../config/constants');
-const { successResponse, errorResponse } = require('../../utils/response');
+const { paginatedSuccess, errorResponse } = require('../../utils/response');
 
 function mapServiceError(res, error, fallbackMessage) {
   if (error.code === 'NOT_FOUND' || error.message?.includes('not found')) {
@@ -15,9 +15,12 @@ function mapServiceError(res, error, fallbackMessage) {
 class AppointmentStatusController {
   async getAppointments(req, res) {
     try {
-      const appointments = await appointmentService.getStaffAppointments(req.user.id);
+      const { items, pagination } = await appointmentService.getStaffAppointments(
+        req.user.id,
+        req.query
+      );
 
-      successResponse(res, 'Appointments retrieved successfully', appointments);
+      paginatedSuccess(res, 'Appointments retrieved successfully', items, pagination);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve appointments', 500);
     }

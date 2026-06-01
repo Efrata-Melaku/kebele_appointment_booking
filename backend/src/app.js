@@ -17,6 +17,7 @@ const adminDashboardRoutes = require('./routes/admin/dashboard.routes');
 const adminAppointmentRoutes = require('./routes/admin/appointment.routes');
 const adminFeedbackRoutes = require('./routes/admin/feedback.routes');
 const adminFormFieldRoutes = require('./routes/admin/formField.routes');
+const adminResidentRoutes = require('./routes/admin/resident.routes');
 const staffAppointmentRoutes = require('./routes/staff/appointmentStatus.routes');
 const userAppointmentRoutes = require('./routes/user/appointment.routes');
 const userFeedbackRoutes = require('./routes/user/feedback.routes');
@@ -81,6 +82,7 @@ app.use('/api/admin/dashboard', protect, authorize(USER_ROLES.ADMIN), adminDashb
 app.use('/api/admin/appointments', protect, authorize(USER_ROLES.ADMIN), adminAppointmentRoutes);
 app.use('/api/admin/feedback', protect, authorize(USER_ROLES.ADMIN), adminFeedbackRoutes);
 app.use('/api/admin/form-fields', protect, authorize(USER_ROLES.ADMIN), adminFormFieldRoutes);
+app.use('/api/admin/residents', protect, authorize(USER_ROLES.ADMIN), adminResidentRoutes);
 
 app.use('/api/staff', protect, authorize(USER_ROLES.STAFF), staffAppointmentRoutes);
 

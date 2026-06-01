@@ -208,6 +208,26 @@ class ServiceService {
     });
   }
 
+  /** Flat list for staff assignment picker (searchable multi-select). */
+  async getServicePickerOptions() {
+    const rows = await serviceModel.findManyServices({
+      select: {
+        id: true,
+        name: true,
+        departmentId: true,
+        department: { select: { name: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return rows.map((s) => ({
+      id: s.id,
+      name: s.name,
+      departmentId: s.departmentId,
+      departmentName: s.department?.name ?? '',
+    }));
+  }
+
   async getServiceDetailWithFields(id) {
     const service = await serviceModel.findServiceById(id, {
       include: {

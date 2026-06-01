@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2, Star } from 'lucide-react';
+import { Star } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
+import { DEFAULT_PAGE_LIMIT, parsePaginatedBody, type PaginationMeta } from '../../../lib/pagination';
+import { PaginationBar } from '../ui/PaginationBar';
+import { TableSkeleton } from '../ui/ListSkeleton';
+import { MODAL_BACKDROP_CLASS } from '../ui/modalStyles';
 
 type Row = {
   id: number;
@@ -25,7 +29,12 @@ export function Feedback() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    limit: DEFAULT_PAGE_LIMIT,
+    totalRecords: 0,
+    totalPages: 1,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Row | null>(null);
@@ -37,7 +46,7 @@ export function Feedback() {
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
     q.set('page', String(page));
-    q.set('pageSize', '20');
+    q.set('limit', String(DEFAULT_PAGE_LIMIT));
     if (rating) q.set('rating', rating);
     if (dateFrom) q.set('dateFrom', dateFrom);
     if (dateTo) q.set('dateTo', dateTo);
@@ -56,10 +65,12 @@ export function Feedback() {
       if (!listRes.res.ok || !listRes.body?.success) {
         throw new Error((listRes.body as { error?: string })?.error || 'Failed to load');
       }
-      const data = listRes.body.data as { items: Row[]; totalPages: number; page: number };
-      setItems(data.items ?? []);
-      setTotalPages(data.totalPages ?? 1);
-      setPage(data.page ?? 1);
+      const { items: rows, pagination: meta } = parsePaginatedBody<Row>(
+        listRes.body as { success?: boolean; data?: Row[]; pagination?: PaginationMeta }
+      );
+      setItems(rows);
+      setPagination(meta);
+      setPage(meta.page);
       if (statsRes.body?.success) setStats(statsRes.body.data as Stats);
       if (reportRes.body?.success) setReport(reportRes.body.data as Report);
     } catch (e) {
@@ -174,9 +185,7 @@ export function Feedback() {
 
       <div className="bg-white rounded-xl border overflow-hidden">
         {loading ? (
-          <div className="flex items-center gap-2 p-8 text-gray-500">
-            <Loader2 className="h-5 w-5 animate-spin" /> Loading…
-          </div>
+          <TableSkeleton rows={7} cols={4} />
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
@@ -215,34 +224,12 @@ export function Feedback() {
             </tbody>
           </table>
         )}
-        <div className="flex justify-between items-center px-4 py-3 border-t text-sm">
-          <span>
-            Page {page} of {totalPages}
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="p-1 border rounded disabled:opacity-40"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="p-1 border rounded disabled:opacity-40"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <PaginationBar pagination={pagination} loading={loading} onPageChange={setPage} />
       </div>
 
       {selected ? (
         <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50"
+          className={MODAL_BACKDROP_CLASS}
           onClick={() => setSelected(null)}
         >
           <div className="bg-white rounded-xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>

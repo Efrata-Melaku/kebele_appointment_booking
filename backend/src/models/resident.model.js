@@ -34,10 +34,20 @@ async function updateResident(id, data, tx) {
   });
 }
 
+async function findManyResidents(options = {}, tx) {
+  return getClient(tx).resident.findMany(options);
+}
+
+async function countResidents(where = {}, tx) {
+  return getClient(tx).resident.count({ where });
+}
+
 module.exports = {
   findResidentByPhone,
   findResidentById,
   upsertResident,
   createResident,
   updateResident,
+  findManyResidents,
+  countResidents,
 };

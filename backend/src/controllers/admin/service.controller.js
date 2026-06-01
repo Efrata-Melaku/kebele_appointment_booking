@@ -39,6 +39,15 @@ class ServiceController {
     }
   }
 
+  async getServicePickerOptions(req, res) {
+    try {
+      const options = await serviceService.getServicePickerOptions();
+      successResponse(res, 'Service options retrieved successfully', options);
+    } catch (error) {
+      errorResponse(res, 'Failed to retrieve service options', 500);
+    }
+  }
+
   async getServiceById(req, res) {
     try {
       const service = await serviceService.getServiceDetailWithFields(req.params.id);

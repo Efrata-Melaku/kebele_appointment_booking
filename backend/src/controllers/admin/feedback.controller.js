@@ -1,11 +1,11 @@
 const feedbackService = require('../../services/feedback.service');
-const { successResponse, errorResponse } = require('../../utils/response');
+const { successResponse, paginatedSuccess, errorResponse } = require('../../utils/response');
 
 class AdminFeedbackController {
   async listFeedback(req, res) {
     try {
-      const result = await feedbackService.listAdminFeedback(req.query);
-      successResponse(res, 'Feedback retrieved successfully', result);
+      const { items, pagination } = await feedbackService.listAdminFeedback(req.query);
+      paginatedSuccess(res, 'Feedback retrieved successfully', items, pagination);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve feedback', 500);
     }

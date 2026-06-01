@@ -1,5 +1,5 @@
 const appointmentService = require('../../services/appointment.service');
-const { successResponse, errorResponse } = require('../../utils/response');
+const { successResponse, paginatedSuccess, errorResponse } = require('../../utils/response');
 
 class AdminAppointmentController {
   async getStats(req, res) {
@@ -13,8 +13,8 @@ class AdminAppointmentController {
 
   async listAppointments(req, res) {
     try {
-      const result = await appointmentService.listAdminAppointments(req.query);
-      successResponse(res, 'Appointments retrieved successfully', result);
+      const { items, pagination } = await appointmentService.listAdminAppointments(req.query);
+      paginatedSuccess(res, 'Appointments retrieved successfully', items, pagination);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve appointments', 500);
     }

@@ -1,5 +1,5 @@
 const staffService = require('../../services/staff.service');
-const { successResponse, errorResponse } = require('../../utils/response');
+const { successResponse, paginatedSuccess, errorResponse } = require('../../utils/response');
 const { AppError } = require('../../utils/AppError');
 
 class StaffController {
@@ -17,8 +17,8 @@ class StaffController {
 
   async getStaff(req, res) {
     try {
-      const staff = await staffService.getStaff();
-      successResponse(res, 'Staff retrieved successfully', staff);
+      const { items, pagination } = await staffService.getStaff(req.query);
+      paginatedSuccess(res, 'Staff retrieved successfully', items, pagination);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve staff', 500);
     }

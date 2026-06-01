@@ -1,5 +1,7 @@
 const appointmentModel = require('../models/appointment.model');
 const feedbackModel = require('../models/feedback.model');
+const { resolveDateFilterRange } = require('../utils/dateRange');
+const { parsePagination, buildPaginationMeta } = require('../utils/pagination');
 const { runTransaction } = require('../models/_client');
 const { APPOINTMENT_STATUS } = require('../config/constants');
 const {
@@ -139,16 +141,9 @@ class FeedbackService {
     if (filters.rating) {
       where.rating = Number(filters.rating);
     }
-    if (filters.dateFrom || filters.dateTo) {
-      where.createdAt = {};
-      if (filters.dateFrom) {
-        where.createdAt.gte = new Date(filters.dateFrom);
-      }
-      if (filters.dateTo) {
-        const end = new Date(filters.dateTo);
-        end.setHours(23, 59, 59, 999);
-        where.createdAt.lte = end;
-      }
+    const createdRange = resolveDateFilterRange(filters);
+    if (createdRange) {
+      where.createdAt = createdRange;
     }
     if (Object.keys(appointmentFilter).length) {
       where.appointment = { is: appointmentFilter };
@@ -157,16 +152,15 @@ class FeedbackService {
   }
 
   async listAdminFeedback(filters = {}) {
-    const page = Math.max(1, Number(filters.page) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 20));
+    const { page, limit, skip } = parsePagination(filters);
     const where = this.buildAdminWhere(filters);
 
     const [total, rows] = await Promise.all([
       feedbackModel.countFeedback(where),
       feedbackModel.findManyFeedback({
         where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take: limit,
         orderBy: { createdAt: 'desc' },
         select: {
           id: true,
@@ -180,10 +174,7 @@ class FeedbackService {
 
     return {
       items: rows.map(mapAnonymousAdminFeedback),
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize) || 1,
+      pagination: buildPaginationMeta({ page, limit, total }),
     };
   }
 

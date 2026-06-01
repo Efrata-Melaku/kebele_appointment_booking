@@ -6,6 +6,16 @@ const { runTransaction } = require('../models/_client');
 const { USER_ROLES } = require('../config/constants');
 const { recalculateStaffCountForService } = require('./serviceStaffCount.service');
 const { ConflictError, NotFoundError, ValidationError } = require('../utils/AppError');
+const { parsePagination, buildPaginationMeta } = require('../utils/pagination');
+const { normalizeEthiopianPhone } = require('../utils/ethiopianPhone');
+
+function assertServicesBelongToDepartment(services, departmentId) {
+  const deptId = Number(departmentId);
+  const mismatched = services.filter((s) => s.departmentId !== deptId);
+  if (mismatched.length > 0) {
+    throw new ValidationError('All selected services must belong to the chosen department');
+  }
+}
 
 const staffSelect = {
   id: true,
@@ -31,7 +41,13 @@ class StaffService {
       throw new ConflictError('User already exists with this email');
     }
 
-    const department = await departmentModel.findDepartmentById(departmentId);
+    const normalizedPhone = normalizeEthiopianPhone(phone);
+    if (!normalizedPhone) {
+      throw new ValidationError('Please enter a valid Ethiopian phone number.');
+    }
+
+    const deptId = Number(departmentId);
+    const department = await departmentModel.findDepartmentById(deptId);
     if (!department) {
       throw new NotFoundError('Department not found');
     }
@@ -44,6 +60,8 @@ class StaffService {
       throw new ValidationError('One or more services were not found');
     }
 
+    assertServicesBelongToDepartment(services, deptId);
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const staff = await userModel.createUser(
@@ -52,8 +70,8 @@ class StaffService {
         email,
         password: hashedPassword,
         role: USER_ROLES.STAFF,
-        phone,
-        departmentId,
+        phone: normalizedPhone,
+        departmentId: deptId,
         staffServiceAssignments: {
           create: uniqueServiceIds.map((serviceId) => ({ serviceId })),
         },
@@ -68,12 +86,34 @@ class StaffService {
     return staff;
   }
 
-  async getStaff() {
-    return userModel.findManyUsers({
-      where: { role: USER_ROLES.STAFF },
-      select: staffSelect,
-      orderBy: { name: 'asc' },
-    });
+  async getStaff(query = {}) {
+    const where = { role: USER_ROLES.STAFF };
+    const search = query.search?.trim();
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { email: { contains: search } },
+        { phone: { contains: search } },
+      ];
+    }
+
+    const { page, limit, skip } = parsePagination(query);
+
+    const [total, rows] = await Promise.all([
+      userModel.countUsers(where),
+      userModel.findManyUsers({
+        where,
+        select: staffSelect,
+        orderBy: { name: 'asc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      items: rows,
+      pagination: buildPaginationMeta({ page, limit, total }),
+    };
   }
 
   async getStaffById(id) {
@@ -107,28 +147,40 @@ class StaffService {
       }
     }
 
-    if (departmentId !== undefined && departmentId !== null) {
-      const department = await departmentModel.findDepartmentById(departmentId);
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (email !== undefined) data.email = email;
+    if (phone !== undefined) {
+      const normalizedPhone = normalizeEthiopianPhone(phone);
+      if (!normalizedPhone) {
+        throw new ValidationError('Please enter a valid Ethiopian phone number.');
+      }
+      data.phone = normalizedPhone;
+    }
+
+    if (departmentId !== undefined) {
+      const deptId = Number(departmentId);
+      const department = await departmentModel.findDepartmentById(deptId);
       if (!department) {
         throw new NotFoundError('Department not found');
       }
+      data.departmentId = deptId;
     }
 
     if (Array.isArray(serviceIds)) {
       const uniqueServiceIds = [...new Set(serviceIds)];
+      if (uniqueServiceIds.length === 0) {
+        throw new ValidationError('At least one service is required');
+      }
       const services = await serviceModel.findManyServices({
         where: { id: { in: uniqueServiceIds } },
       });
       if (services.length !== uniqueServiceIds.length) {
         throw new ValidationError('One or more services were not found');
       }
+      const effectiveDeptId = data.departmentId ?? existing.departmentId;
+      assertServicesBelongToDepartment(services, effectiveDeptId);
     }
-
-    const data = {};
-    if (name !== undefined) data.name = name;
-    if (email !== undefined) data.email = email;
-    if (phone !== undefined) data.phone = phone;
-    if (departmentId !== undefined) data.departmentId = departmentId;
     if (isActive !== undefined) data.isActive = !!isActive;
 
     if (password && String(password).length > 0) {

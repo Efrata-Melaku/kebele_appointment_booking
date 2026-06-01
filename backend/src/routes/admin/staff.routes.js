@@ -1,7 +1,11 @@
 const express = require('express');
 const staffController = require('../../controllers/admin/staff.controller');
 const validate = require('../../middleware/validate.middleware');
-const { registerStaffSchema, updateStaffSchema } = require('../../utils/validators');
+const {
+  registerStaffSchema,
+  updateStaffSchema,
+  listStaffQuerySchema,
+} = require('../../utils/validators');
 
 const router = express.Router();
 
@@ -9,7 +13,7 @@ const router = express.Router();
 router.post('/register', validate(registerStaffSchema), staffController.registerStaff);
 
 // GET /api/admin/staff
-router.get('/', staffController.getStaff);
+router.get('/', validate.validateQuery(listStaffQuerySchema), staffController.getStaff);
 
 // GET /api/admin/staff/:id
 router.get('/:id', staffController.getStaffById);

@@ -15,6 +15,9 @@ router.post('/', validate(createServiceSchema), serviceController.createService)
 
 router.get('/duplicate-check', serviceController.duplicateServiceCheck);
 
+/** Staff form / picker — flat { id, name, departmentId, departmentName }[] */
+router.get('/picker', serviceController.getServicePickerOptions);
+
 router.get('/', serviceController.getServices);
 
 router.get('/:id/form-fields', serviceFormFieldController.listFormFields);

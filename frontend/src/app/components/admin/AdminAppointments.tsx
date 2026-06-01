@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { Calendar, ChevronLeft, ChevronRight, Eye, Loader2, Search } from 'lucide-react';
+import { Calendar, Eye, Search } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
 import { http } from '../../../lib/http';
+import { appendDateFilters, type DatePreset } from '../../../lib/dateFilters';
+import { DEFAULT_PAGE_LIMIT, parsePaginatedBody, type PaginationMeta } from '../../../lib/pagination';
+import { PaginationBar } from '../ui/PaginationBar';
+import { TableSkeleton } from '../ui/ListSkeleton';
 
 type Stats = {
   totalAppointments: number;
@@ -42,9 +46,13 @@ function fmtTime(iso?: string) {
 export function AdminAppointments() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [items, setItems] = useState<Row[]>([]);
-  const [total, setTotal] = useState(0);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    page: 1,
+    limit: DEFAULT_PAGE_LIMIT,
+    totalRecords: 0,
+    totalPages: 1,
+  });
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -55,6 +63,8 @@ export function AdminAppointments() {
   const [departmentId, setDepartmentId] = useState('');
   const [serviceId, setServiceId] = useState('');
   const [status, setStatus] = useState('');
+  const [datePreset, setDatePreset] = useState<DatePreset>('');
+  const [slotDate, setSlotDate] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [residentName, setResidentName] = useState('');
@@ -64,18 +74,35 @@ export function AdminAppointments() {
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
     q.set('page', String(page));
-    q.set('pageSize', '20');
+    q.set('limit', String(DEFAULT_PAGE_LIMIT));
     if (search.trim()) q.set('search', search.trim());
     if (departmentId) q.set('departmentId', departmentId);
     if (serviceId) q.set('serviceId', serviceId);
     if (status) q.set('status', status);
-    if (dateFrom) q.set('dateFrom', dateFrom);
-    if (dateTo) q.set('dateTo', dateTo);
+    appendDateFilters(q, {
+      datePreset,
+      slotDate: datePreset === '' && slotDate ? slotDate : undefined,
+      dateFrom: datePreset === '' && !slotDate ? dateFrom : undefined,
+      dateTo: datePreset === '' && !slotDate ? dateTo : undefined,
+    });
     if (residentName.trim()) q.set('residentName', residentName.trim());
     if (phone.trim()) q.set('phone', phone.trim());
     if (appointmentNumber.trim()) q.set('appointmentNumber', appointmentNumber.trim());
     return q.toString();
-  }, [page, search, departmentId, serviceId, status, dateFrom, dateTo, residentName, phone, appointmentNumber]);
+  }, [
+    page,
+    search,
+    departmentId,
+    serviceId,
+    status,
+    datePreset,
+    slotDate,
+    dateFrom,
+    dateTo,
+    residentName,
+    phone,
+    appointmentNumber,
+  ]);
 
   const loadMeta = useCallback(async () => {
     try {
@@ -104,16 +131,12 @@ export function AdminAppointments() {
       if (!listRes.res.ok || !listRes.body?.success) {
         throw new Error((listRes.body as { error?: string })?.error || 'Failed to load appointments');
       }
-      const data = listRes.body.data as {
-        items: Row[];
-        total: number;
-        totalPages: number;
-        page: number;
-      };
-      setItems(data.items ?? []);
-      setTotal(data.total ?? 0);
-      setTotalPages(data.totalPages ?? 1);
-      setPage(data.page ?? 1);
+      const { items: rows, pagination: meta } = parsePaginatedBody<Row>(
+        listRes.body as { success?: boolean; data?: Row[]; pagination?: PaginationMeta }
+      );
+      setItems(rows);
+      setPagination(meta);
+      setPage(meta.page);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -230,16 +253,48 @@ export function AdminAppointments() {
             </option>
           ))}
         </select>
+        <select
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          value={datePreset}
+          onChange={(e) => {
+            const v = e.target.value as DatePreset;
+            setDatePreset(v);
+            if (v) {
+              setSlotDate('');
+              setDateFrom('');
+              setDateTo('');
+            }
+          }}
+        >
+          <option value="">Custom date range</option>
+          <option value="today">Today</option>
+          <option value="week">This week</option>
+          <option value="month">This month</option>
+        </select>
         <input
           type="date"
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          title="Single appointment date"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+          value={slotDate}
+          disabled={!!datePreset}
+          onChange={(e) => {
+            setSlotDate(e.target.value);
+            setDateFrom('');
+            setDateTo('');
+          }}
+        />
+        <input
+          type="date"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
           value={dateFrom}
+          disabled={!!datePreset || !!slotDate}
           onChange={(e) => setDateFrom(e.target.value)}
         />
         <input
           type="date"
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
           value={dateTo}
+          disabled={!!datePreset || !!slotDate}
           onChange={(e) => setDateTo(e.target.value)}
         />
         <input
@@ -268,9 +323,7 @@ export function AdminAppointments() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
-          <div className="flex items-center gap-2 p-8 text-gray-500">
-            <Loader2 className="h-5 w-5 animate-spin" /> Loading appointments…
-          </div>
+          <TableSkeleton rows={7} cols={10} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -324,32 +377,11 @@ export function AdminAppointments() {
             </table>
           </div>
         )}
-        <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 text-sm text-gray-600">
-          <span>
-            {total} appointment{total === 1 ? '' : 's'}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1 rounded border disabled:opacity-40"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span>
-              Page {page} of {totalPages}
-            </span>
-            <button
-              type="button"
-              disabled={page >= totalPages || loading}
-              onClick={() => setPage((p) => p + 1)}
-              className="p-1 rounded border disabled:opacity-40"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <PaginationBar
+          pagination={pagination}
+          loading={loading}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   );
