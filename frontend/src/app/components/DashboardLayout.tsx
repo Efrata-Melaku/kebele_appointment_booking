@@ -2,7 +2,6 @@ import { Outlet, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard,
   Users,
-  Home,
   Calendar,
   Settings as SettingsIcon,
   MessageSquare,
@@ -16,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { clearAuthSession, getAuthUser } from '../../lib/auth';
+import { MOBILE_MENU_BACKDROP_CLASS } from './ui/modalStyles';
 
 export function DashboardLayout() {
   const location = useLocation();
@@ -36,10 +36,12 @@ export function DashboardLayout() {
   const menuItems = {
     admin: [
       { path: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/admin/appointments', label: 'Appointments', icon: Calendar },
       { path: '/admin/staff', label: 'Manage Staff', icon: Users },
-      { path: '/admin/houseowners', label: 'Houseowner Records', icon: Home },
-      { path: '/admin/limits', label: 'Generate slots', icon: Calendar },
+      { path: '/admin/limits', label: 'Slots sync', icon: Calendar },
+      { path: '/admin/schedule', label: 'Schedule overrides', icon: Calendar },
       { path: '/admin/services', label: 'Services', icon: FileText },
+      { path: '/admin/form-builder', label: 'Form builder', icon: ClipboardList },
       { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
       { path: '/admin/reports', label: 'Reports', icon: BarChart3 },
       { path: '/admin/settings', label: 'Settings', icon: SettingsIcon },
@@ -78,7 +80,9 @@ export function DashboardLayout() {
             <ul className="space-y-2">
               {currentMenu.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.path;
+                const isActive =
+                  location.pathname === item.path ||
+                  location.pathname.startsWith(`${item.path}/`);
                 return (
                   <li key={item.path}>
                     <button
@@ -154,7 +158,7 @@ export function DashboardLayout() {
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="md:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+          className={MOBILE_MENU_BACKDROP_CLASS}
         />
       )}
     </div>

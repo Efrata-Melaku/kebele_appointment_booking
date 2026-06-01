@@ -11,6 +11,16 @@ const successResponse = (res, message, data = null, statusCode = 200) => {
   return res.status(statusCode).json(response);
 };
 
+/** List endpoints: `{ success, message, data: [], pagination }` */
+const paginatedSuccess = (res, message, data, pagination, statusCode = 200) => {
+  return res.status(statusCode).json({
+    success: true,
+    message,
+    data,
+    pagination,
+  });
+};
+
 const errorResponse = (res, message, statusCode = 500, errors = null) => {
   const response = {
     success: false,
@@ -26,5 +36,6 @@ const errorResponse = (res, message, statusCode = 500, errors = null) => {
 
 module.exports = {
   successResponse,
+  paginatedSuccess,
   errorResponse,
 };

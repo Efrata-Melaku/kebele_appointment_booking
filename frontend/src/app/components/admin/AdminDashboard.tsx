@@ -112,10 +112,16 @@ export function AdminDashboard() {
       onClick: () => navigate('/admin/staff'),
     },
     {
-      label: 'Generate slots',
-      icon: Settings,
+      label: 'Bulk slot sync',
+      icon: Calendar,
       color: 'bg-green-500',
       onClick: () => navigate('/admin/limits'),
+    },
+    {
+      label: 'Schedule overrides',
+      icon: Settings,
+      color: 'bg-teal-600',
+      onClick: () => navigate('/admin/schedule'),
     },
     {
       label: 'Manage services',

@@ -1,66 +1,24 @@
-const prisma = require('../../prisma/client');
-const { successResponse, errorResponse } = require('../../utils/response');
-const { USER_ROLES } = require('../../config/constants');
+const staffService = require('../../services/staff.service');
+const { successResponse, paginatedSuccess, errorResponse } = require('../../utils/response');
+const { AppError } = require('../../utils/AppError');
 
 class StaffController {
   async registerStaff(req, res) {
     try {
-      const { name, email, password, phone } = req.body;
-
-      // Check if user already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { email },
-      });
-
-      if (existingUser) {
-        return errorResponse(res, 'User already exists with this email', 400);
-      }
-
-      // Hash password (handled in auth controller, but keeping here for completeness)
-      const bcrypt = require('bcrypt');
-      const saltRounds = 10;
-      const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-      // Create staff user
-      const staff = await prisma.user.create({
-        data: {
-          name,
-          email,
-          password: hashedPassword,
-          role: USER_ROLES.STAFF,
-          phone,
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          phone: true,
-          createdAt: true,
-        },
-      });
-
+      const staff = await staffService.registerStaff(req.body);
       successResponse(res, 'Staff registered successfully', staff, 201);
     } catch (error) {
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Staff registration failed', 500);
     }
   }
 
   async getStaff(req, res) {
     try {
-      const staff = await prisma.user.findMany({
-        where: { role: USER_ROLES.STAFF },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          createdAt: true,
-        },
-        orderBy: { name: 'asc' },
-      });
-
-      successResponse(res, 'Staff retrieved successfully', staff);
+      const { items, pagination } = await staffService.getStaff(req.query);
+      paginatedSuccess(res, 'Staff retrieved successfully', items, pagination);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve staff', 500);
     }
@@ -68,88 +26,36 @@ class StaffController {
 
   async getStaffById(req, res) {
     try {
-      const { id } = req.params;
-
-      const staff = await prisma.user.findFirst({
-        where: {
-          id: parseInt(id),
-          role: USER_ROLES.STAFF,
-        },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          createdAt: true,
-        },
-      });
-
-      if (!staff) {
-        return errorResponse(res, 'Staff member not found', 404);
-      }
-
+      const staff = await staffService.getStaffById(req.params.id);
       successResponse(res, 'Staff member retrieved successfully', staff);
     } catch (error) {
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Failed to retrieve staff member', 500);
     }
   }
 
   async updateStaff(req, res) {
     try {
-      const { id } = req.params;
-      const { name, email, phone } = req.body;
-
-      const staff = await prisma.user.updateMany({
-        where: {
-          id: parseInt(id),
-          role: USER_ROLES.STAFF,
-        },
-        data: {
-          name,
-          email,
-          phone,
-        },
-      });
-
-      if (staff.count === 0) {
-        return errorResponse(res, 'Staff member not found', 404);
-      }
-
-      // Get updated staff
-      const updatedStaff = await prisma.user.findUnique({
-        where: { id: parseInt(id) },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          createdAt: true,
-        },
-      });
-
+      const updatedStaff = await staffService.updateStaff(req.params.id, req.body);
       successResponse(res, 'Staff member updated successfully', updatedStaff);
     } catch (error) {
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Failed to update staff member', 500);
     }
   }
 
   async deleteStaff(req, res) {
     try {
-      const { id } = req.params;
-
-      const staff = await prisma.user.deleteMany({
-        where: {
-          id: parseInt(id),
-          role: USER_ROLES.STAFF,
-        },
-      });
-
-      if (staff.count === 0) {
-        return errorResponse(res, 'Staff member not found', 404);
-      }
-
+      await staffService.deleteStaff(req.params.id);
       successResponse(res, 'Staff member deleted successfully');
     } catch (error) {
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Failed to delete staff member', 500);
     }
   }

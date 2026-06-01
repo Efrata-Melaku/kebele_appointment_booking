@@ -1,46 +1,25 @@
-const prisma = require('../../prisma/client');
+const feedbackService = require('../../services/feedback.service');
 const { successResponse, errorResponse } = require('../../utils/response');
 
+/** @deprecated Prefer POST /api/resident/feedback with phone verification */
 class FeedbackController {
   async createFeedback(req, res) {
     try {
-      const { appointmentId, rating, comment } = req.body;
-
-      // Check if appointment exists and doesn't already have feedback
-      const appointment = await prisma.appointment.findUnique({
-        where: { id: appointmentId },
-        include: { feedback: true },
-      });
-
-      if (!appointment) {
-        return errorResponse(res, 'Appointment not found', 404);
+      const { phone, appointmentId, rating, comment } = req.body;
+      if (!phone) {
+        return errorResponse(res, 'Phone number is required', 400);
       }
-
-      if (appointment.feedback) {
-        return errorResponse(res, 'Feedback already exists for this appointment', 400);
-      }
-
-      const feedback = await prisma.feedback.create({
-        data: {
-          appointmentId,
-          rating,
-          comment,
-        },
-        include: {
-          appointment: {
-            include: {
-              service: {
-                include: {
-                  department: true,
-                },
-              },
-            },
-          },
-        },
+      const feedback = await feedbackService.createResidentFeedback({
+        phone,
+        appointmentId,
+        rating,
+        comment,
       });
-
       successResponse(res, 'Feedback submitted successfully', feedback, 201);
     } catch (error) {
+      if (error.statusCode) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Failed to submit feedback', 500);
     }
   }
@@ -48,28 +27,16 @@ class FeedbackController {
   async getFeedback(req, res) {
     try {
       const { appointmentId } = req.params;
-
-      const feedback = await prisma.feedback.findUnique({
-        where: { appointmentId: parseInt(appointmentId) },
-        include: {
-          appointment: {
-            include: {
-              service: {
-                include: {
-                  department: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!feedback) {
-        return errorResponse(res, 'Feedback not found', 404);
+      const { phone } = req.query;
+      if (!phone) {
+        return errorResponse(res, 'Phone number is required', 400);
       }
-
+      const feedback = await feedbackService.getResidentFeedback(appointmentId, phone);
       successResponse(res, 'Feedback retrieved successfully', feedback);
     } catch (error) {
+      if (error.statusCode) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Failed to retrieve feedback', 500);
     }
   }
@@ -77,31 +44,18 @@ class FeedbackController {
   async updateFeedback(req, res) {
     try {
       const { appointmentId } = req.params;
-      const { rating, comment } = req.body;
-
-      const feedback = await prisma.feedback.update({
-        where: { appointmentId: parseInt(appointmentId) },
-        data: {
-          rating,
-          comment,
-        },
-        include: {
-          appointment: {
-            include: {
-              service: {
-                include: {
-                  department: true,
-                },
-              },
-            },
-          },
-        },
+      const { phone, rating, comment } = req.body;
+      if (!phone) {
+        return errorResponse(res, 'Phone number is required', 400);
+      }
+      const feedback = await feedbackService.updateResidentFeedback(appointmentId, phone, {
+        rating,
+        comment,
       });
-
       successResponse(res, 'Feedback updated successfully', feedback);
     } catch (error) {
-      if (error.code === 'P2025') {
-        return errorResponse(res, 'Feedback not found', 404);
+      if (error.statusCode) {
+        return errorResponse(res, error.message, error.statusCode);
       }
       errorResponse(res, 'Failed to update feedback', 500);
     }
@@ -109,25 +63,8 @@ class FeedbackController {
 
   async getAllFeedback(req, res) {
     try {
-      const feedback = await prisma.feedback.findMany({
-        include: {
-          appointment: {
-            include: {
-              resident: {
-                select: { fullName: true },
-              },
-              service: {
-                include: {
-                  department: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      successResponse(res, 'Feedback retrieved successfully', feedback);
+      const result = await feedbackService.listAdminFeedback(req.query);
+      successResponse(res, 'Feedback retrieved successfully', result);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve feedback', 500);
     }

@@ -1,45 +1,33 @@
-const prisma = require('../../prisma/client');
+const departmentService = require('../../services/department.service');
 const { successResponse, errorResponse } = require('../../utils/response');
+const { AppError } = require('../../utils/AppError');
 
 class DepartmentController {
   async createDepartment(req, res) {
     try {
       const { name } = req.body;
-
-      // Check if department already exists
-      const existingDepartment = await prisma.department.findUnique({
-        where: { name },
-      });
-
-      if (existingDepartment) {
-        return errorResponse(res, 'Department already exists', 400);
-      }
-
-      const department = await prisma.department.create({
-        data: { name },
-      });
-
+      const department = await departmentService.createDepartment(name);
       successResponse(res, 'Department created successfully', department, 201);
     } catch (error) {
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Failed to create department', 500);
+    }
+  }
+
+  async duplicateCheck(req, res) {
+    try {
+      const result = await departmentService.checkDuplicateName(req.query.name);
+      successResponse(res, 'OK', result);
+    } catch (error) {
+      errorResponse(res, 'Check failed', 500);
     }
   }
 
   async getDepartments(req, res) {
     try {
-      const departments = await prisma.department.findMany({
-        include: {
-          services: {
-            include: {
-              _count: {
-                select: { appointments: true, timeSlots: true },
-              },
-            },
-          },
-        },
-        orderBy: { name: 'asc' },
-      });
-
+      const departments = await departmentService.getDepartments();
       successResponse(res, 'Departments retrieved successfully', departments);
     } catch (error) {
       errorResponse(res, 'Failed to retrieve departments', 500);
@@ -48,27 +36,12 @@ class DepartmentController {
 
   async getDepartmentById(req, res) {
     try {
-      const { id } = req.params;
-
-      const department = await prisma.department.findUnique({
-        where: { id: parseInt(id) },
-        include: {
-          services: {
-            include: {
-              _count: {
-                select: { appointments: true, timeSlots: true },
-              },
-            },
-          },
-        },
-      });
-
-      if (!department) {
-        return errorResponse(res, 'Department not found', 404);
-      }
-
+      const department = await departmentService.getDepartmentById(req.params.id);
       successResponse(res, 'Department retrieved successfully', department);
     } catch (error) {
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
+      }
       errorResponse(res, 'Failed to retrieve department', 500);
     }
   }
@@ -77,16 +50,11 @@ class DepartmentController {
     try {
       const { id } = req.params;
       const { name } = req.body;
-
-      const department = await prisma.department.update({
-        where: { id: parseInt(id) },
-        data: { name },
-      });
-
+      const department = await departmentService.updateDepartment(id, name);
       successResponse(res, 'Department updated successfully', department);
     } catch (error) {
-      if (error.code === 'P2025') {
-        return errorResponse(res, 'Department not found', 404);
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
       }
       errorResponse(res, 'Failed to update department', 500);
     }
@@ -94,16 +62,11 @@ class DepartmentController {
 
   async deleteDepartment(req, res) {
     try {
-      const { id } = req.params;
-
-      await prisma.department.delete({
-        where: { id: parseInt(id) },
-      });
-
+      await departmentService.deleteDepartment(req.params.id);
       successResponse(res, 'Department deleted successfully');
     } catch (error) {
-      if (error.code === 'P2025') {
-        return errorResponse(res, 'Department not found', 404);
+      if (error instanceof AppError) {
+        return errorResponse(res, error.message, error.statusCode);
       }
       errorResponse(res, 'Failed to delete department', 500);
     }

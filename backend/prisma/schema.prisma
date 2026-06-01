@@ -23,6 +23,17 @@ enum AppointmentStatus {
   CANCELLED
 }
 
+enum FormFieldType {
+  text
+  textarea
+  number
+  select
+  radio
+  checkbox
+  date
+  file
+}
+
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
@@ -30,29 +41,48 @@ model User {
   role      Role
   name      String
   phone     String?
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  isActive  Boolean  @default(true)
+  staffServiceAssignments StaffServiceAssignment[]
+  appointmentStatusChanges AppointmentStatusHistory[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Explicit join: staff (User role STAFF) assigned to services
+model StaffServiceAssignment {
+  staffUserId Int
+  serviceId   Int
+  staff       User    @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  service     Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([staffUserId, serviceId])
+  @@map("staff_service_assignments")
 }
 
 model Resident {
-  id          Int          @id @default(autoincrement())
-  fullName    String
-  phone       String       @unique
-  gender      String
-  documentUrl String?
-  kebeleId    String?
-  houseNumber String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  appointments Appointment[]
+  id                 Int                 @id @default(autoincrement())
+  fullName           String
+  phone              String              @unique
+  email              String
+  gender             String
+  documentUrl        String?
+  kebeleId           String?
+  houseNumber        String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  appointmentGroups  AppointmentGroup[]
+  formSubmissions    ServiceFormSubmission[]
 }
 
 model Department {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   services  Service[]
+  staff     User[]
 }
 
 model Service {
@@ -60,61 +90,159 @@ model Service {
   name                 String
   description          String?
   durationInMinutes    Int
-  staffCount           Int
-  requiredDocuments    String?    // JSON string for documents list
-  hasTeyazeRequirement Boolean    @default(false)
+  /// Denormalized count of active staff assigned to this service; maintained by application logic
+  staffCount           Int        @default(0)
+  requiredDocuments    String?
   departmentId         Int
   department           Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  timeSlots            TimeSlot[]
   appointments         Appointment[]
+  staffServiceAssignments StaffServiceAssignment[]
+  serviceScheduleOverrides ServiceScheduleOverride[]
+  formFields           ServiceFormField[]
+  formSubmissions      ServiceFormSubmission[]
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
   @@map("services")
 }
 
-model TimeSlot {
-  id           Int          @id @default(autoincrement()) @map("slot_id")
-  date         DateTime
-  startTime    DateTime
-  endTime      DateTime
-  maxCapacity  Int
-  bookedCount  Int          @default(0)
-  isAvailable  Boolean      @default(true)
+/// Admin-configured fields for the resident booking form for this service
+model ServiceFormField {
+  id           Int           @id @default(autoincrement())
   serviceId    Int
-  service      Service      @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  appointments Appointment[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  label        String
+  fieldType    FormFieldType
+  placeholder  String?
+  required     Boolean       @default(false)
+  /// JSON string array for select/radio options, e.g. ["Male","Female"]
+  options      String?
+  order        Int           @default(0)
+  /// Soft-delete: inactive fields stay for historical responses but are hidden from new bookings
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  submissionValues ServiceFormSubmissionValue[]
 
-  @@unique([serviceId, startTime])
-  @@map("time_slots")
+  @@index([serviceId, order])
+  @@index([serviceId, isActive])
+  @@map("service_form_fields")
+}
+
+model AppointmentGroup {
+  id                  Int            @id @default(autoincrement())
+  appointmentNumber   String         @unique
+  residentId          Int
+  resident            Resident       @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  appointments        Appointment[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@map("appointment_groups")
 }
 
 model Appointment {
-  id                Int               @id @default(autoincrement())
-  appointmentNumber String            @unique
-  residentId        Int
-  resident          Resident          @relation(fields: [residentId], references: [id], onDelete: Cascade)
-  serviceId         Int
-  service           Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  timeSlotId        Int
-  timeSlot          TimeSlot          @relation(fields: [timeSlotId], references: [id], onDelete: Cascade)
-  status            AppointmentStatus @default(PENDING)
-  documentUrl       String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  feedback          Feedback?
+  id          Int               @id @default(autoincrement())
+  groupId     Int
+  group       AppointmentGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  serviceId   Int
+  service     Service           @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  /// Calendar day of the booked slot (date-only)
+  slotDate    DateTime          @db.Date
+  slotStartTime DateTime
+  slotEndTime   DateTime
+  status      AppointmentStatus @default(PENDING)
+  documentUrl String?
+  reminderSent   Boolean   @default(false)
+  reminderSentAt DateTime?
+  confirmationEmailSent   Boolean   @default(false)
+  confirmationEmailSentAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  feedbackId  Int?      @unique
+  feedback    Feedback? @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  formSubmission ServiceFormSubmission?
+  uploadedFiles UploadedFile[]
+  statusHistory AppointmentStatusHistory[]
+
+  @@index([serviceId, slotDate, slotStartTime])
+  @@map("appointments")
 }
 
-model Feedback {
-  id            Int         @id @default(autoincrement())
-  appointmentId Int         @unique
+model AppointmentStatusHistory {
+  id              Int               @id @default(autoincrement())
+  appointmentId   Int
+  appointment     Appointment       @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  previousStatus  AppointmentStatus?
+  newStatus       AppointmentStatus
+  note            String?           @db.Text
+  changedByUserId Int?
+  changedBy       User?             @relation(fields: [changedByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime          @default(now())
+
+  @@index([appointmentId, createdAt])
+  @@map("appointment_status_history")
+}
+
+/// One resident booking submission per service appointment (logical module per serviceId)
+model ServiceFormSubmission {
+  id            Int      @id @default(autoincrement())
+  serviceId     Int
+  service       Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  appointmentId Int      @unique
   appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  rating        Int?
-  comment       String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  residentId    Int
+  resident      Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  values        ServiceFormSubmissionValue[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([serviceId, createdAt])
+  @@index([residentId])
+  @@map("service_form_submissions")
+}
+
+/// One row per answered field — searchable and reportable per service
+model ServiceFormSubmissionValue {
+  id           Int                   @id @default(autoincrement())
+  submissionId Int
+  submission   ServiceFormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  formFieldId  Int
+  formField    ServiceFormField      @relation(fields: [formFieldId], references: [id], onDelete: Restrict)
+  value        String                @db.Text
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  uploadedFile UploadedFile?
+
+  @@unique([submissionId, formFieldId])
+  @@index([formFieldId, value(length: 191)])
+  @@map("service_form_submission_values")
+}
+
+/// Cloudinary file metadata linked to an appointment and form answer
+model UploadedFile {
+  id                Int                         @id @default(autoincrement())
+  appointmentId     Int
+  appointment       Appointment                 @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  submissionValueId Int?                        @unique
+  submissionValue   ServiceFormSubmissionValue? @relation(fields: [submissionValueId], references: [id], onDelete: SetNull)
+  fileName          String
+  fileUrl           String                      @db.Text
+  fileType          String?
+  uploadedAt        DateTime                    @default(now())
+
+  @@index([appointmentId])
+  @@map("uploaded_files")
+}
+
+/// Anonymous feedback — only rating and comment are stored (no resident PII).
+model Feedback {
+  id          Int          @id @default(autoincrement())
+  rating      Int
+  comment     String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  appointment Appointment?
 }
 
 model Houseowner {
@@ -124,4 +252,57 @@ model Houseowner {
   phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Singleton-style default template (seed id = 1). Week flags: Mon–Sun.
+model WorkScheduleTemplate {
+  id         Int     @id @default(autoincrement())
+  mon        Boolean @default(true)
+  tue        Boolean @default(true)
+  wed        Boolean @default(true)
+  thu        Boolean @default(true)
+  fri        Boolean @default(true)
+  sat        Boolean @default(false)
+  sun        Boolean @default(false)
+  workStart  String  @default("08:00")
+  workEnd    String  @default("17:00")
+  lunchStart String  @default("12:00")
+  lunchEnd   String  @default("13:00")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("work_schedule_templates")
+}
+
+/// Office-wide exception for a calendar day (closed or custom hours)
+model OfficeScheduleOverride {
+  id         Int      @id @default(autoincrement())
+  date       DateTime @unique @db.Date
+  isClosed   Boolean  @default(false)
+  workStart  String?
+  workEnd    String?
+  lunchStart String?
+  lunchEnd   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("office_schedule_overrides")
+}
+
+/// Per-service exception: disable service for a day and/or override hours for that service only
+model ServiceScheduleOverride {
+  id              Int      @id @default(autoincrement())
+  date            DateTime @db.Date
+  serviceId       Int
+  service         Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  serviceDisabled Boolean  @default(false)
+  workStart       String?
+  workEnd         String?
+  lunchStart      String?
+  lunchEnd        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([date, serviceId])
+  @@map("service_schedule_overrides")
 }
