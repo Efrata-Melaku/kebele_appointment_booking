@@ -25,6 +25,12 @@ const env = {
   AT_USERNAME: process.env.AT_USERNAME || 'sandbox',
   /** Optional sender ID / short code (Africa's Talking approved sender) */
   AT_SENDER_ID: process.env.AT_SENDER_ID || '',
+  EMAIL_HOST: process.env.EMAIL_HOST?.trim() || 'smtp.gmail.com',
+  EMAIL_PORT: parseInt(process.env.EMAIL_PORT, 10) || 587,
+  EMAIL_USER: process.env.EMAIL_USER?.trim(),
+  /** Gmail app passwords are 16 chars; spaces in .env are stripped if pasted with groups */
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD?.replace(/\s/g, '') || undefined,
+  EMAIL_FROM: process.env.EMAIL_FROM?.trim(),
 };
 
 module.exports = env;

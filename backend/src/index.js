@@ -3,6 +3,7 @@ const path = require('path');
 const app = require('./app');
 const env = require('./config/env');
 const prisma = require('./prisma/client');
+const { verifyEmailConnection } = require('./config/email.config');
 
 /** Optional temp folder only — production files live in Cloudinary */
 async function ensureTempUploadDirectory() {
@@ -23,6 +24,15 @@ async function startServer() {
 
     await prisma.$connect();
     console.log('Database connected successfully');
+
+    try {
+      const emailOk = await verifyEmailConnection();
+      if (emailOk) {
+        console.log('Email service connected successfully');
+      }
+    } catch (emailErr) {
+      console.warn('[email] Connection check failed:', emailErr.message);
+    }
 
     app.listen(env.PORT, () => {
       console.log(`Server running on port ${env.PORT}`);

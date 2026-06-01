@@ -1,5 +1,6 @@
 const appointmentService = require('../../services/appointment.service');
 const smsService = require('../../services/sms.service');
+const appointmentEmailService = require('../../services/appointmentEmail.service');
 const { successResponse, errorResponse } = require('../../utils/response');
 const { isAppointmentNumberRef } = require('../../utils/appointmentRef');
 const dynamicFormService = require('../../services/dynamicForm.service');
@@ -112,11 +113,37 @@ class AppointmentController {
         smsResult = { success: false, message: 'SMS failed' };
       }
 
-      const responseMessage = smsResult.success
-        ? 'Appointment created successfully'
-        : 'Appointment created successfully. SMS delivery failed.';
+      let emailResult = { success: false, skipped: true, message: 'Email not sent' };
+      try {
+        emailResult = await appointmentEmailService.sendConfirmationForAppointment({
+          id: appointment.id,
+          status: appointment.status,
+          slotDate: appointment.slotDate,
+          slotStartTime: appointment.slotStartTime,
+          slotEndTime: appointment.slotEndTime,
+          timeSlot: appointment.timeSlot,
+          group: {
+            appointmentNumber: appointment.appointmentNumber,
+            resident: appointment.resident,
+          },
+          service: appointment.service,
+        });
+      } catch (emailError) {
+        console.error('[email] Confirmation failed:', emailError);
+        emailResult = { success: false, message: 'Email failed' };
+      }
 
-      successResponse(res, responseMessage, { ...appointment, sms: smsResult }, 201);
+      const responseMessage =
+        smsResult.success && (emailResult.success || emailResult.skipped)
+          ? 'Appointment created successfully'
+          : 'Appointment created successfully. Some notifications could not be delivered.';
+
+      successResponse(
+        res,
+        responseMessage,
+        { ...appointment, sms: smsResult, email: emailResult },
+        201
+      );
     } catch (error) {
       if (
         error.message.includes('not available') ||
@@ -207,6 +234,11 @@ class AppointmentController {
         } catch (smsError) {
           console.error('[sms] Reschedule notification failed:', smsError);
         }
+        try {
+          await appointmentEmailService.sendUpdateForAppointment(appointment);
+        } catch (emailError) {
+          console.error('[email] Reschedule notification failed:', emailError);
+        }
         return successResponse(res, 'Appointment rescheduled successfully', appointment);
       }
 
@@ -229,6 +261,11 @@ class AppointmentController {
         });
       } catch (smsError) {
         console.error('[sms] Reschedule notification failed:', smsError);
+      }
+      try {
+        await appointmentEmailService.sendUpdateForAppointment(appointment);
+      } catch (emailError) {
+        console.error('[email] Reschedule notification failed:', emailError);
       }
 
       successResponse(res, 'Appointment rescheduled successfully', appointment);
@@ -310,6 +347,11 @@ class AppointmentController {
         } catch (smsError) {
           console.error('[sms] Cancellation notification failed:', smsError);
         }
+        try {
+          await appointmentEmailService.sendCancellationForAppointment(cancelledAppointment);
+        } catch (emailError) {
+          console.error('[email] Cancellation notification failed:', emailError);
+        }
       }
 
       successResponse(res, 'Appointment cancelled successfully');
@@ -328,6 +370,39 @@ class AppointmentController {
         return errorResponse(res, error.message, 400);
       }
       errorResponse(res, 'Failed to cancel appointment', 500);
+    }
+  }
+
+  async resendConfirmationEmail(req, res) {
+    try {
+      const { appointmentRef } = req.params;
+      const { phone, appointmentItemId } = req.body;
+
+      const emailResult = await appointmentEmailService.resendConfirmationByRef(
+        appointmentRef,
+        phone,
+        appointmentItemId != null ? Number(appointmentItemId) : undefined
+      );
+
+      if (emailResult.success) {
+        return successResponse(res, 'Confirmation email sent successfully', emailResult);
+      }
+      if (emailResult.skipped) {
+        return errorResponse(res, emailResult.message || 'Email could not be sent', 400);
+      }
+      return errorResponse(res, emailResult.message || 'Failed to send confirmation email', 502);
+    } catch (error) {
+      if (error.statusCode === 404 || error.message?.includes('not found')) {
+        return errorResponse(res, error.message, 404);
+      }
+      if (
+        error.statusCode === 403 ||
+        error.message?.includes('Verification failed')
+      ) {
+        return errorResponse(res, error.message, 403);
+      }
+      console.error('[resendConfirmationEmail]', error);
+      errorResponse(res, 'Failed to resend confirmation email', 500);
     }
   }
 

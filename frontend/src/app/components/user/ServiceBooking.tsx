@@ -76,6 +76,7 @@ export function ServiceBooking() {
         ? {
             fullName: '',
             phone: '',
+            email: '',
             gender: 'MALE' as const,
             serviceId: service.id,
             dateStr,

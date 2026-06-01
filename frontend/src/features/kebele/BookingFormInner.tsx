@@ -85,6 +85,8 @@ type Props = {
 
     phone: string;
 
+    email: string;
+
     gender: 'MALE' | 'FEMALE' | 'OTHER';
 
     serviceId: number;
@@ -134,6 +136,8 @@ export function BookingFormInner({
         fullName: initialPersonal.fullName,
 
         phone: initialPersonal.phone,
+
+        email: initialPersonal.email,
 
         gender: initialPersonal.gender,
 
@@ -265,6 +269,8 @@ function BookingFormFields({
 
     fd.append('phone', v.phone);
 
+    fd.append('email', v.email.trim());
+
     fd.append('gender', v.gender);
 
     fd.append('serviceId', String(serviceId));
@@ -359,6 +365,27 @@ function BookingFormFields({
           {errors.phone && (
 
             <p className="mt-1 text-sm text-red-600">{String(errors.phone.message)}</p>
+
+          )}
+
+        </div>
+
+        <div>
+
+          <Label>Email address *</Label>
+
+          <Input
+            className="mt-1"
+            type="email"
+            placeholder="you@example.com"
+            autoComplete="email"
+            aria-invalid={!!errors.email}
+            {...register('email')}
+          />
+
+          {errors.email && (
+
+            <p className="mt-1 text-sm text-red-600">{String(errors.email.message)}</p>
 
           )}
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Edit, Trash2, MessageSquare, X, Loader2, FileEdit } from 'lucide-react';
+import { Edit, Trash2, MessageSquare, X, Loader2, FileEdit, Mail } from 'lucide-react';
 import { http } from '../../../lib/http';
 import { apiFetch, apiJson } from '../../../lib/api';
 import { getResidentPhone, setResidentPhone } from '../../../lib/auth';
@@ -51,6 +51,8 @@ export function MyAppointments() {
   const [editFields, setEditFields] = useState<ServiceFormFieldDef[]>([]);
   const [editLoading, setEditLoading] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [resendBusyId, setResendBusyId] = useState<number | null>(null);
+  const [resendSuccess, setResendSuccess] = useState('');
 
   const load = useCallback(async (explicitPhone?: string) => {
     const p = (explicitPhone ?? savedPhone)?.trim();
@@ -271,6 +273,39 @@ export function MyAppointments() {
     }
   }
 
+  async function resendConfirmation(apt: Apt) {
+    const normalized = normalizeEthiopianPhone(savedPhone || phone);
+    if (!normalized || !apt.appointmentNumber) {
+      setPhoneError(ETHIOPIAN_PHONE_MESSAGE);
+      return;
+    }
+    setResendBusyId(apt.id);
+    setResendSuccess('');
+    setError('');
+    try {
+      const { res, body } = await apiFetch(
+        `/api/user/appointments/${encodeURIComponent(apt.appointmentNumber)}/resend-confirmation`,
+        {
+          method: 'POST',
+          skipAuth: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: normalized,
+            appointmentItemId: apt.id,
+          }),
+        }
+      );
+      if (!res.ok || !body?.success) {
+        throw new Error((body as { error?: string })?.error || 'Could not send email');
+      }
+      setResendSuccess(`Confirmation email sent for ${apt.appointmentNumber}.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not resend email');
+    } finally {
+      setResendBusyId(null);
+    }
+  }
+
   function formatDt(apt: Apt) {
     const ds = apt.timeSlot?.startTime ? new Date(apt.timeSlot.startTime) : null;
     return {
@@ -346,6 +381,11 @@ export function MyAppointments() {
           <Loader2 className="w-5 h-5 animate-spin" /> Loading…
         </div>
       ) : null}
+      {resendSuccess ? (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
+          {resendSuccess}
+        </div>
+      ) : null}
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       ) : null}
@@ -396,6 +436,19 @@ export function MyAppointments() {
                   <div>🕐 {t}</div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={resendBusyId === apt.id || !savedPhone?.trim()}
+                    onClick={() => void resendConfirmation(apt)}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-50 text-slate-700 rounded-lg text-sm border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    {resendBusyId === apt.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4" />
+                    )}
+                    Resend confirmation email
+                  </button>
                   {canModify ? (
                     <>
                       {(apt.formResponses?.length ?? 0) > 0 || apt.serviceId ? (

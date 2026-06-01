@@ -64,6 +64,7 @@ model Resident {
   id                 Int                 @id @default(autoincrement())
   fullName           String
   phone              String              @unique
+  email              String
   gender             String
   documentUrl        String?
   kebeleId           String?
@@ -153,6 +154,8 @@ model Appointment {
   documentUrl String?
   reminderSent   Boolean   @default(false)
   reminderSentAt DateTime?
+  confirmationEmailSent   Boolean   @default(false)
+  confirmationEmailSentAt DateTime?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   feedbackId  Int?      @unique

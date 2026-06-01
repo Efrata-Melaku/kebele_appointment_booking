@@ -193,6 +193,15 @@ const updateAppointmentFormResponsesSchema = Joi.object({
 const createAppointmentSchema = Joi.object({
   fullName: Joi.string().trim().min(2).max(100).required(),
   phone: ethiopianPhoneField(true),
+  email: Joi.string()
+    .trim()
+    .email()
+    .required()
+    .messages({
+      'string.email': 'Please enter a valid email address.',
+      'any.required': 'Email is required',
+      'string.empty': 'Email is required',
+    }),
   gender: Joi.string().valid(...Object.values(GENDER_OPTIONS)).required(),
   serviceId: Joi.alternatives()
     .try(Joi.number().integer().positive(), Joi.string().pattern(/^\d+$/))
@@ -210,6 +219,11 @@ const rescheduleAppointmentSchema = Joi.object({
 });
 
 const cancelAppointmentQuerySchema = Joi.object({
+  phone: ethiopianPhoneField(true),
+  appointmentItemId: Joi.number().integer().positive().optional(),
+});
+
+const resendConfirmationSchema = Joi.object({
   phone: ethiopianPhoneField(true),
   appointmentItemId: Joi.number().integer().positive().optional(),
 });
@@ -341,6 +355,7 @@ module.exports = {
   createAppointmentSchema,
   rescheduleAppointmentSchema,
   cancelAppointmentQuerySchema,
+  resendConfirmationSchema,
   addBookingServiceSchema,
   myAppointmentsQuerySchema,
   getAppointmentByRefQuerySchema,

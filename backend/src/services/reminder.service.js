@@ -3,6 +3,7 @@
  */
 const appointmentModel = require('../models/appointment.model');
 const smsService = require('./sms.service');
+const appointmentEmailService = require('./appointmentEmail.service');
 const { APPOINTMENT_STATUS } = require('../config/constants');
 const { attachTimeSlot } = require('../utils/appointmentSlot');
 
@@ -72,6 +73,12 @@ async function sendTomorrowReminders() {
       sent += 1;
     } else {
       failed += 1;
+    }
+
+    try {
+      await appointmentEmailService.sendReminderForAppointment(row);
+    } catch (emailErr) {
+      console.error('[email] Reminder failed for appointment', row.id, emailErr.message);
     }
   }
 

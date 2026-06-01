@@ -9,6 +9,7 @@ const { isAppointmentNumberRef } = require('../utils/appointmentRef');
 const { APPOINTMENT_STATUS } = require('../config/constants');
 const { attachTimeSlot, attachTimeSlotMany } = require('../utils/appointmentSlot');
 const slotAvailability = require('./slotAvailability.service');
+const emailService = require('./email.service');
 const formSubmissionService = require('./formSubmission.service');
 const dynamicFormService = require('./dynamicForm.service');
 const {
@@ -64,6 +65,7 @@ const appointmentCreateSelect = {
           id: true,
           fullName: true,
           phone: true,
+          email: true,
           gender: true,
           documentUrl: true,
         },
@@ -212,6 +214,12 @@ class AppointmentService {
   ) {
     const { fullName, gender } = appointmentData;
     const phone = requireNormalizedPhone(appointmentData.phone);
+    const email = emailService.normalizeRecipient(appointmentData.email);
+    if (!email) {
+      const err = new Error('Please enter a valid email address.');
+      err.statusCode = 400;
+      throw err;
+    }
     const { serviceId, slotDate, slotStart } = parseBookingSlot(appointmentData);
 
     const resolved = await slotAvailability.resolveBookableSlot(serviceId, slotDate, slotStart);
@@ -233,11 +241,13 @@ class AppointmentService {
             {
               fullName,
               phone,
+              email,
               gender,
               documentUrl: documentUrl != null && documentUrl !== '' ? documentUrl : null,
             },
             {
               fullName,
+              email,
               gender,
               ...(documentUrl != null && documentUrl !== '' ? { documentUrl } : {}),
             },
@@ -1026,12 +1036,17 @@ class AppointmentService {
             id: flat.group.resident.id,
             fullName: flat.group.resident.fullName,
             phone: flat.group.resident.phone,
+            email: flat.group.resident.email,
             gender: flat.group.resident.gender,
             kebeleId: flat.group.resident.kebeleId,
             houseNumber: flat.group.resident.houseNumber,
             documentUrl: flat.group.resident.documentUrl,
           }
         : null,
+      emailDelivery: {
+        confirmationEmailSent: flat.confirmationEmailSent ?? false,
+        confirmationEmailSentAt: flat.confirmationEmailSentAt ?? null,
+      },
       service: flat.service
         ? {
             id: flat.service.id,

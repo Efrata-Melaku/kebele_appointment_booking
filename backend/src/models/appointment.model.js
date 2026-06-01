@@ -61,7 +61,7 @@ async function findAppointmentsNeedingReminderForDay(dayStart, statuses, tx) {
       service: { select: { id: true, name: true } },
       group: {
         include: {
-          resident: { select: { id: true, phone: true, fullName: true } },
+          resident: { select: { id: true, phone: true, fullName: true, email: true } },
         },
       },
     },
@@ -79,6 +79,16 @@ async function markReminderSent(appointmentId, tx) {
   });
 }
 
+async function markConfirmationEmailSent(appointmentId, tx) {
+  return getClient(tx).appointment.update({
+    where: { id: Number(appointmentId) },
+    data: {
+      confirmationEmailSent: true,
+      confirmationEmailSentAt: new Date(),
+    },
+  });
+}
+
 module.exports = {
   findAppointmentById,
   findFirstAppointment,
@@ -90,4 +100,5 @@ module.exports = {
   findAppointmentsByServiceAndDay,
   findAppointmentsNeedingReminderForDay,
   markReminderSent,
+  markConfirmationEmailSent,
 };

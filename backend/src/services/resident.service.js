@@ -9,6 +9,7 @@ class ResidentService {
       where.OR = [
         { fullName: { contains: search } },
         { phone: { contains: search } },
+        { email: { contains: search } },
         { kebeleId: { contains: search } },
         { houseNumber: { contains: search } },
       ];
@@ -27,6 +28,7 @@ class ResidentService {
           id: true,
           fullName: true,
           phone: true,
+          email: true,
           gender: true,
           kebeleId: true,
           houseNumber: true,
@@ -40,6 +42,7 @@ class ResidentService {
       id: r.id,
       name: r.fullName,
       phone: r.phone,
+      email: r.email,
       gender: r.gender,
       idNumber: r.kebeleId,
       address: r.houseNumber,

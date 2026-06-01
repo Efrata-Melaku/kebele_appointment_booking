@@ -6,6 +6,7 @@ const {
   createAppointmentSchema,
   rescheduleAppointmentSchema,
   cancelAppointmentQuerySchema,
+  resendConfirmationSchema,
   addBookingServiceSchema,
   availableSlotsQuerySchema,
   updateAppointmentFormResponsesSchema,
@@ -50,6 +51,12 @@ router.put(
   handleUploadError,
   validate(updateAppointmentFormResponsesSchema),
   appointmentController.updateAppointmentFormResponses
+);
+
+router.post(
+  '/:appointmentRef/resend-confirmation',
+  validate(resendConfirmationSchema),
+  appointmentController.resendConfirmationEmail
 );
 
 router.get(

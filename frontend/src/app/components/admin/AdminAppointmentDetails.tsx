@@ -23,6 +23,7 @@ type Detail = {
   resident: {
     fullName: string;
     phone: string;
+    email?: string;
     gender: string;
     kebeleId?: string | null;
     houseNumber?: string | null;
@@ -30,6 +31,10 @@ type Detail = {
   service: { name: string; department?: { name: string } | null } | null;
   formResponses: { fieldLabel: string; fieldType: string; value?: string; fileUrl?: string; fileName?: string }[];
   uploadedFiles: { fieldLabel: string; fileUrl: string; fileName: string; fileType?: string | null }[];
+  emailDelivery?: {
+    confirmationEmailSent: boolean;
+    confirmationEmailSentAt?: string | null;
+  };
   feedback: { rating: number; comment?: string | null; createdAt: string } | null;
   groupHistory: {
     id: number;
@@ -96,7 +101,8 @@ export function AdminAppointmentDetails() {
     );
   }
 
-  const { appointment, resident, service, formResponses, uploadedFiles, feedback, groupHistory } = detail;
+  const { appointment, resident, service, formResponses, uploadedFiles, feedback, groupHistory, emailDelivery } =
+    detail;
   const textResponses = formResponses.filter((r) => r.fieldType !== 'file');
 
   return (
@@ -129,8 +135,36 @@ export function AdminAppointmentDetails() {
             <dd>{resident?.phone}</dd>
           </div>
           <div>
+            <dt className="text-gray-500">Email</dt>
+            <dd>{resident?.email || '—'}</dd>
+          </div>
+          <div>
             <dt className="text-gray-500">Gender</dt>
             <dd>{resident?.gender}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="bg-white rounded-xl border p-6 shadow-sm">
+        <h3 className="flex items-center gap-2 font-medium text-gray-900 mb-4">Email notifications</h3>
+        <dl className="grid sm:grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt className="text-gray-500">Confirmation email</dt>
+            <dd>
+              {emailDelivery?.confirmationEmailSent ? (
+                <span className="text-green-700 font-medium">Sent</span>
+              ) : (
+                <span className="text-gray-600">Not sent</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-gray-500">Last sent</dt>
+            <dd>
+              {emailDelivery?.confirmationEmailSentAt
+                ? new Date(emailDelivery.confirmationEmailSentAt).toLocaleString()
+                : '—'}
+            </dd>
           </div>
         </dl>
       </section>

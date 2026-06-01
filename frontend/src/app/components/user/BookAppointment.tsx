@@ -96,6 +96,7 @@ export function BookAppointment() {
         ? {
             fullName: '',
             phone: '',
+            email: '',
             gender: 'MALE' as const,
             serviceId: svcId,
             dateStr,

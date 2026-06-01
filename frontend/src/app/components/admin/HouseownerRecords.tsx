@@ -10,6 +10,7 @@ type ResidentRow = {
   name: string;
   idNumber?: string | null;
   phone: string;
+  email?: string;
   address?: string | null;
   registered: string;
   appointments: number;
@@ -87,7 +88,7 @@ export function HouseownerRecords() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
-            placeholder="Search by name, phone, or ID…"
+            placeholder="Search by name, phone, email, or ID…"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -97,7 +98,7 @@ export function HouseownerRecords() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
-          <TableSkeleton rows={7} cols={6} />
+          <TableSkeleton rows={7} cols={7} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -106,6 +107,7 @@ export function HouseownerRecords() {
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Name</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Kebele ID</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Phone</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600">Email</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">House #</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Registered</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Appointments</th>
@@ -114,7 +116,7 @@ export function HouseownerRecords() {
               <tbody>
                 {residents.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-gray-500">
+                    <td colSpan={7} className="py-12 text-center text-gray-500">
                       No residents found
                     </td>
                   </tr>
@@ -124,6 +126,7 @@ export function HouseownerRecords() {
                       <td className="py-4 px-6 text-sm text-gray-800">{resident.name}</td>
                       <td className="py-4 px-6 text-sm text-gray-600">{resident.idNumber || '—'}</td>
                       <td className="py-4 px-6 text-sm text-gray-600">{resident.phone}</td>
+                      <td className="py-4 px-6 text-sm text-gray-600">{resident.email || '—'}</td>
                       <td className="py-4 px-6 text-sm text-gray-600">{resident.address || '—'}</td>
                       <td className="py-4 px-6 text-sm text-gray-600">
                         {new Date(resident.registered).toLocaleDateString()}
