@@ -33,6 +33,7 @@ export function ServiceBooking() {
   const [boot, setBoot] = useState(true);
   const [bootErr, setBootErr] = useState('');
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [emptySlotsMessage, setEmptySlotsMessage] = useState('');
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
   const [done, setDone] = useState(false);
@@ -59,15 +60,25 @@ export function ServiceBooking() {
   useEffect(() => {
     if (!serviceId || !dateStr || !service?.bookable) {
       setSlots([]);
+      setEmptySlotsMessage('');
       return;
     }
     setSlotsLoading(true);
+    setEmptySlotsMessage('');
     http
       .get<{ success: boolean; data: Slot[] }>(
         `/api/user/appointments/available-slots?serviceId=${serviceId}&date=${encodeURIComponent(dateStr)}`
       )
       .then((r) => r.data.success && setSlots(r.data.data))
-      .catch(() => setSlots([]))
+      .catch((e: unknown) => {
+        setSlots([]);
+        const message = (e as { response?: { data?: { error?: string } } }).response?.data?.error || '';
+        setEmptySlotsMessage(
+          message.includes('Office is closed on this date')
+            ? 'Office is closed on this date.'
+            : 'No available appointments for this date.'
+        );
+      })
       .finally(() => setSlotsLoading(false));
   }, [serviceId, dateStr, service?.bookable]);
 
@@ -205,6 +216,7 @@ export function ServiceBooking() {
               onSubmitBooking={onSubmitBooking}
               initialPersonal={initialPersonal}
               onDateChange={setDateStr}
+              emptySlotsMessage={emptySlotsMessage}
             />
           ) : (
             <p className="rounded-lg border bg-amber-50 px-3 py-2 text-sm text-amber-900">

@@ -21,6 +21,7 @@ export function BookAppointment() {
   const [depts, setDepts] = useState<Dept[]>([]);
   const [svcs, setSvcs] = useState<Svc[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
+  const [emptySlotsMessage, setEmptySlotsMessage] = useState('');
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [fields, setFields] = useState<FormFieldRow[]>([]);
   const [fldLoad, setFldLoad] = useState(false);
@@ -77,15 +78,25 @@ export function BookAppointment() {
   useEffect(() => {
     if (!svcId || !dateStr) {
       setSlots([]);
+      setEmptySlotsMessage('');
       return;
     }
     setSlotsLoading(true);
+    setEmptySlotsMessage('');
     http
       .get<{ success: boolean; data: Slot[] }>(
         `/api/user/appointments/available-slots?serviceId=${svcId}&date=${encodeURIComponent(dateStr)}`
       )
       .then((r) => r.data.success && setSlots(r.data.data))
-      .catch(() => setSlots([]))
+      .catch((e: unknown) => {
+        setSlots([]);
+        const message = (e as { response?: { data?: { error?: string } } }).response?.data?.error || '';
+        setEmptySlotsMessage(
+          message.includes('Office is closed on this date')
+            ? 'Office is closed on this date.'
+            : 'No available appointments for this date.'
+        );
+      })
       .finally(() => setSlotsLoading(false));
   }, [svcId, dateStr]);
 
@@ -203,6 +214,7 @@ export function BookAppointment() {
               onSubmitBooking={onSubmitBooking}
               initialPersonal={initialPersonal}
               onDateChange={setDateStr}
+              emptySlotsMessage={emptySlotsMessage}
             />
           ) : (
             <p className="text-sm text-gray-500">Select a department and service to continue.</p>

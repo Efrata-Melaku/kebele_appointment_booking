@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Edit, Trash2, MessageSquare, X, Loader2, FileEdit, Mail } from 'lucide-react';
 import { http } from '@kebele/shared/lib/http';
 import { apiFetch, apiJson } from '@kebele/shared/lib/api';
-import { getResidentPhone, setResidentPhone } from '@kebele/shared/lib/auth';
 import {
   ETHIOPIAN_PHONE_MESSAGE,
   normalizeEthiopianPhone,
@@ -16,6 +15,7 @@ type Apt = {
   appointmentNumber: string;
   status: string;
   serviceId?: number;
+  resident?: { phone?: string };
   service?: { name: string };
   timeSlot?: { date: string; startTime: string; endTime?: string };
   formResponses?: FormResponseRow[];
@@ -26,16 +26,21 @@ type MyAppointmentsProps = {
   pageTitle?: string;
   pageDescription?: string;
   highlight?: 'track' | 'manage';
+  viewMode?: 'default' | 'feedback';
 };
 
 export function MyAppointments({
   pageTitle = 'My appointments',
   pageDescription = 'Enter the phone you used when booking',
   highlight,
+  viewMode = 'default',
 }: MyAppointmentsProps = {}) {
-  const [phone, setPhoneInput] = useState(() => getResidentPhone() || '');
-  const [savedPhone, setSavedPhone] = useState(() => getResidentPhone());
+  const [phone, setPhoneInput] = useState('');
+  const [appointmentNumberInput, setAppointmentNumberInput] = useState('');
+  const [searchedPhone, setSearchedPhone] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [phoneError, setPhoneError] = useState('');
+  const [searchError, setSearchError] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [list, setList] = useState<Apt[]>([]);
@@ -52,9 +57,6 @@ export function MyAppointments({
   >([]);
   const [resDate, setResDate] = useState('');
   const [resSlotStart, setResSlotStart] = useState('');
-  const [lookupRef, setLookupRef] = useState('');
-  const [lookupResult, setLookupResult] = useState<unknown>(null);
-  const [lookupBusy, setLookupBusy] = useState(false);
   const [resBusy, setResBusy] = useState(false);
 
   const [showEditForm, setShowEditForm] = useState(false);
@@ -64,84 +66,74 @@ export function MyAppointments({
   const [resendBusyId, setResendBusyId] = useState<number | null>(null);
   const [resendSuccess, setResendSuccess] = useState('');
 
-  const load = useCallback(async (explicitPhone?: string) => {
-    const p = (explicitPhone ?? savedPhone)?.trim();
-    if (!p) return;
+  const load = useCallback(async (params: { phone?: string; appointmentNumber?: string }) => {
+    const q = new URLSearchParams();
+    if (params.phone) q.set('phone', params.phone);
+    if (params.appointmentNumber) q.set('appointmentNumber', params.appointmentNumber);
+    if (![...q.keys()].length) return;
     setLoading(true);
     setError('');
+    setSearchError('');
     try {
       const { res, body } = await apiFetch(
-        `/api/resident/my-appointments?phone=${encodeURIComponent(p)}`,
+        `/api/resident/my-appointments?${q.toString()}`,
         { skipAuth: true }
       );
       if (!res.ok || !body?.success || body.data === undefined)
         throw new Error((body as { error?: string })?.error || 'Failed');
-      setList((body.data as Apt[]) ?? []);
+      const data = body.data as Apt[] | { items?: Apt[] };
+      setList(Array.isArray(data) ? data : (data?.items ?? []));
+      setHasSearched(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load');
+      setSearchError(e instanceof Error ? e.message : 'Could not load');
+      setHasSearched(true);
+      setList([]);
     } finally {
       setLoading(false);
     }
-  }, [savedPhone]);
+  }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const reloadCurrentSearch = useCallback(() => {
+    const ref = appointmentNumberInput.trim();
+    return load({
+      phone: searchedPhone ?? undefined,
+      appointmentNumber: ref || selected?.appointmentNumber || undefined,
+    });
+  }, [appointmentNumberInput, searchedPhone, selected, load]);
 
   const filtered = useMemo(() => {
     const u = tab === 'ALL' ? list : list.filter((a) => (a.status || '').toUpperCase() === tab);
     return u;
   }, [list, tab]);
 
-  function persistPhoneAndLoad() {
-    const normalized = normalizeEthiopianPhone(phone);
-    if (!normalized) {
+  function performSearch() {
+    const ref = appointmentNumberInput.trim();
+    const normalized = phone.trim() ? normalizeEthiopianPhone(phone) : null;
+    if (!normalized && !ref) {
+      setPhoneError('');
+      setSearchError('Enter a phone number or appointment number.');
+      return;
+    }
+    if (phone.trim() && !normalized) {
       setPhoneError(ETHIOPIAN_PHONE_MESSAGE);
-      setError('');
+      setSearchError('');
       return;
     }
     setPhoneError('');
-    setPhoneInput(normalized);
-    setResidentPhone(normalized);
-    setSavedPhone(normalized);
+    setSearchError('');
+    setSearchedPhone(normalized);
     setError('');
-    void load(normalized);
-  }
-
-  async function runLookup() {
-    const ref = lookupRef.trim();
-    if (!ref) return;
-    const normalized = normalizeEthiopianPhone(savedPhone || phone);
-    if (!normalized) {
-      setPhoneError(ETHIOPIAN_PHONE_MESSAGE);
-      return;
-    }
-    setPhoneError('');
-    setLookupBusy(true);
-    setError('');
-    setLookupResult(null);
-    try {
-      const q = new URLSearchParams({
-        phone: normalized,
-        appointmentNumber: ref,
-      });
-      const data = await apiJson<unknown>(
-        `/api/resident/my-appointments?${q.toString()}`,
-        { skipAuth: true }
-      );
-      setLookupResult(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lookup failed');
-    } finally {
-      setLookupBusy(false);
-    }
+    void load({
+      phone: normalized ?? undefined,
+      appointmentNumber: ref || undefined,
+    });
   }
 
   async function confirmCancel() {
-    if (!selected || !savedPhone || !selected.appointmentNumber) return;
+    if (!selected || !searchedPhone || !selected.appointmentNumber) return;
     try {
       const q = new URLSearchParams({
-        phone: savedPhone.trim(),
+        phone: searchedPhone.trim(),
         appointmentItemId: String(selected.id),
       });
       const { res, body } = await apiFetch(
@@ -151,7 +143,7 @@ export function MyAppointments({
       if (!res.ok || !body?.success) throw new Error((body as { error?: string })?.error || 'Failed');
       setShowCancelModal(false);
       setSelected(null);
-      await load();
+      await reloadCurrentSearch();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Cancel failed');
     }
@@ -217,10 +209,10 @@ export function MyAppointments({
   }
 
   async function submitEditForm(fd: FormData) {
-    if (!selected?.appointmentNumber || !savedPhone?.trim()) return;
+    if (!selected?.appointmentNumber || !searchedPhone?.trim()) return;
     setEditSubmitting(true);
     setError('');
-    fd.append('phone', savedPhone.trim());
+    fd.append('phone', searchedPhone.trim());
     fd.append('appointmentItemId', String(selected.id));
     try {
       const res = await http.put(
@@ -230,7 +222,7 @@ export function MyAppointments({
       if (!res.data.success) throw new Error((res.data as { error?: string }).error || 'Failed');
       setShowEditForm(false);
       setSelected(null);
-      await load();
+      await reloadCurrentSearch();
     } catch (e) {
       const ax = e as { response?: { data?: { error?: string; details?: { message: string }[] } } };
       const d = ax.response?.data?.details;
@@ -242,7 +234,7 @@ export function MyAppointments({
   }
 
   async function applyReschedule() {
-    if (!selected || !selected.appointmentNumber || savedPhone?.trim() === '' || !resSlotStart) return;
+    if (!selected || !selected.appointmentNumber || searchedPhone?.trim() === '' || !resSlotStart) return;
     setResBusy(true);
     try {
       const { res, body } = await apiFetch(
@@ -252,7 +244,7 @@ export function MyAppointments({
           skipAuth: true,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            phone: savedPhone.trim(),
+            phone: searchedPhone.trim(),
             slotDate: resDate,
             slotStart: resSlotStart,
             appointmentItemId: selected.id,
@@ -262,7 +254,7 @@ export function MyAppointments({
       if (!res.ok || !body?.success) throw new Error((body as { error?: string })?.error || 'Failed');
       setShowReschedule(false);
       setSelected(null);
-      await load();
+      await reloadCurrentSearch();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Reschedule failed');
     } finally {
@@ -276,6 +268,10 @@ export function MyAppointments({
         return 'Pending';
       case 'COMPLETED':
         return 'Completed';
+      case 'RESCHEDULED':
+        return 'Rescheduled';
+      case 'NOT_SERVED':
+        return 'Not Served';
       case 'CANCELLED':
         return 'Cancelled';
       default:
@@ -284,7 +280,7 @@ export function MyAppointments({
   }
 
   async function resendConfirmation(apt: Apt) {
-    const normalized = normalizeEthiopianPhone(savedPhone || phone);
+    const normalized = normalizeEthiopianPhone(searchedPhone || phone);
     if (!normalized || !apt.appointmentNumber) {
       setPhoneError(ETHIOPIAN_PHONE_MESSAGE);
       return;
@@ -334,65 +330,49 @@ export function MyAppointments({
       </div>
 
       <div
-        id="track-lookup"
-        className={`bg-white rounded-xl p-4 shadow-sm border space-y-2 ${
-          highlight === 'track' ? 'border-blue-300 ring-2 ring-blue-100' : 'border-gray-100'
+        className={`bg-white rounded-xl p-4 shadow-sm border space-y-3 ${
+          highlight === 'track' || viewMode === 'feedback'
+            ? 'border-blue-300 ring-2 ring-blue-100'
+            : 'border-gray-100'
         }`}
       >
-        <p className="text-sm text-gray-700 font-medium">Lookup by appointment number</p>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="text"
-            placeholder="e.g. APP-20260510-4821"
-            value={lookupRef}
-            onChange={(e) => setLookupRef(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-200 rounded-lg"
-          />
-          <button
-            type="button"
-            onClick={() => void runLookup()}
-            disabled={lookupBusy}
-            className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-900 disabled:opacity-50"
-          >
-            {lookupBusy ? 'Loading…' : 'Retrieve'}
-          </button>
-        </div>
-        {lookupResult ? (
-          <pre className="text-xs bg-gray-50 border rounded-lg p-3 overflow-x-auto max-h-64 overflow-y-auto">
-            {JSON.stringify(lookupResult, null, 2)}
-          </pre>
-        ) : null}
-      </div>
-
-      <div
-        className={`bg-white rounded-xl p-4 shadow-sm border flex flex-col sm:flex-row gap-2 ${
-          highlight === 'manage' ? 'border-blue-300 ring-2 ring-blue-100' : 'border-gray-100'
-        }`}
-      >
-        <div className="flex-1">
-          <input
-            type="tel"
-            placeholder="09XXXXXXXX"
-            value={phone}
-            onChange={(e) => {
-              setPhoneInput(e.target.value);
-              if (phoneError) setPhoneError('');
-            }}
-            className="w-full px-4 py-2 border border-gray-200 rounded-lg"
-            aria-invalid={!!phoneError}
-          />
-          {phoneError ? (
-            <p className="mt-1 text-sm text-red-600">{phoneError}</p>
-          ) : null}
+        <p className="text-sm text-gray-700 font-medium">Search Appointment</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Phone Number</label>
+            <input
+              type="tel"
+              placeholder="+2519XXXXXXXX or 09XXXXXXXX"
+              value={phone}
+              onChange={(e) => {
+                setPhoneInput(e.target.value);
+                if (phoneError) setPhoneError('');
+              }}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg"
+              aria-invalid={!!phoneError}
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Appointment Number</label>
+            <input
+              type="text"
+              placeholder="APP-XXXXXXXX"
+              value={appointmentNumberInput}
+              onChange={(e) => setAppointmentNumberInput(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg"
+            />
+          </div>
         </div>
         <button
           type="button"
-          onClick={persistPhoneAndLoad}
+          onClick={performSearch}
           disabled={loading}
           className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
         >
-          {loading ? 'Loading…' : 'Load appointments'}
+          {loading ? 'Searching…' : 'Search'}
         </button>
+        {phoneError ? <p className="text-sm text-red-600">{phoneError}</p> : null}
+        {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
       </div>
 
       {loading ? (
@@ -409,6 +389,60 @@ export function MyAppointments({
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       ) : null}
 
+      {!hasSearched ? null : viewMode === 'feedback' ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          {list.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-gray-500">
+              You do not have any appointments available for feedback.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 text-sm text-gray-600">Appointment Number</th>
+                    <th className="text-left py-3 px-4 text-sm text-gray-600">Service Name</th>
+                    <th className="text-left py-3 px-4 text-sm text-gray-600">Appointment Date</th>
+                    <th className="text-left py-3 px-4 text-sm text-gray-600">Appointment Status</th>
+                    <th className="text-left py-3 px-4 text-sm text-gray-600">Feedback</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((apt) => {
+                    const { d } = formatDt(apt);
+                    return (
+                      <tr key={apt.id} className="border-t border-gray-100">
+                        <td className="py-3 px-4 text-sm font-mono">{apt.appointmentNumber}</td>
+                        <td className="py-3 px-4 text-sm">{apt.service?.name ?? 'Service'}</td>
+                        <td className="py-3 px-4 text-sm">{d}</td>
+                        <td className="py-3 px-4 text-sm">{statusLabel(apt.status)}</td>
+                        <td className="py-3 px-4 text-sm">
+                          {apt.feedback ? (
+                            <span className="text-gray-500">Submitted</span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelected(apt);
+                                setFeedbackMode('create');
+                                setShowFeedbackModal(true);
+                              }}
+                              className="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg"
+                            >
+                              <MessageSquare className="w-4 h-4" /> Feedback
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex flex-wrap gap-2">
         {(['ALL', 'PENDING', 'COMPLETED', 'CANCELLED'] as const).map((t) => (
           <button
@@ -422,15 +456,11 @@ export function MyAppointments({
         ))}
       </div>
 
-      {!savedPhone?.trim() ? (
-        <p className="text-sm text-gray-500">Enter your phone above to fetch appointments.</p>
-      ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filtered.map((apt) => {
             const { d, t } = formatDt(apt);
             const st = apt.status?.toUpperCase() || '';
             const canModify = st === 'PENDING';
-            const canFeedback = st === 'COMPLETED';
             return (
               <div key={apt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <div className="flex justify-between mb-3">
@@ -457,7 +487,7 @@ export function MyAppointments({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    disabled={resendBusyId === apt.id || !savedPhone?.trim()}
+                    disabled={resendBusyId === apt.id || !searchedPhone?.trim()}
                     onClick={() => void resendConfirmation(apt)}
                     className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-50 text-slate-700 rounded-lg text-sm border border-slate-200 hover:bg-slate-100 disabled:opacity-50"
                   >
@@ -498,54 +528,15 @@ export function MyAppointments({
                       </button>
                     </>
                   ) : null}
-                  {canFeedback ? (
-                    apt.feedback ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelected(apt);
-                            setFeedbackMode('view');
-                            setShowFeedbackModal(true);
-                          }}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg text-sm"
-                        >
-                          <MessageSquare className="w-4 h-4" /> View feedback
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelected(apt);
-                            setFeedbackMode('edit');
-                            setShowFeedbackModal(true);
-                          }}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm"
-                        >
-                          Edit feedback
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelected(apt);
-                          setFeedbackMode('create');
-                          setShowFeedbackModal(true);
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-purple-50 text-purple-600 rounded-lg text-sm"
-                      >
-                        <MessageSquare className="w-4 h-4" /> Leave feedback
-                      </button>
-                    )
-                  ) : null}
                 </div>
               </div>
             );
           })}
         </div>
+        </>
       )}
 
-      {filtered.length === 0 && savedPhone?.trim() && !loading ? (
+      {viewMode !== 'feedback' && hasSearched && filtered.length === 0 && !loading ? (
         <p className="text-sm text-gray-500">No appointments for this filter.</p>
       ) : null}
 
@@ -571,17 +562,22 @@ export function MyAppointments({
         </div>
       ) : null}
 
-      {showFeedbackModal && selected && savedPhone ? (
+      {showFeedbackModal && selected ? (
         <ResidentFeedbackModal
           open={showFeedbackModal}
           appointmentId={selected.id}
-          phone={savedPhone}
+          phone={normalizeEthiopianPhone(searchedPhone || selected.resident?.phone || '') || ''}
           mode={feedbackMode}
           onClose={() => {
             setShowFeedbackModal(false);
             setSelected(null);
           }}
-          onSaved={() => void load()}
+          onSaved={() =>
+            void load({
+              phone: searchedPhone ?? undefined,
+              appointmentNumber: appointmentNumberInput.trim() || undefined,
+            })
+          }
         />
       ) : null}
 

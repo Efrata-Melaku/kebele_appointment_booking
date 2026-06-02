@@ -1,14 +1,18 @@
 const scheduleModel = require('../models/schedule.model');
 const { getOrCreateDefaultTemplate } = require('./overrideChecker.service');
 const { NotFoundError, ValidationError } = require('../utils/AppError');
+const { parseYmd } = require('../utils/dateRange');
 
 function parseDateInput(value) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    throw new ValidationError('Invalid date');
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      throw new ValidationError('Invalid date');
+    }
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
   }
-  d.setHours(0, 0, 0, 0);
-  return d;
+  const parsed = parseYmd(value);
+  if (!parsed) throw new ValidationError('Invalid date');
+  return parsed;
 }
 
 class ScheduleService {

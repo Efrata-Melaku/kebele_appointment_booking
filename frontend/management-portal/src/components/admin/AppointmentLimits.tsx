@@ -125,31 +125,33 @@ export function AppointmentLimits() {
       </form>
 
       {preview.length > 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-left">
-              <tr>
-                <th className="px-4 py-2">Start</th>
-                <th className="px-4 py-2">End</th>
-                <th className="px-4 py-2">Booked</th>
-                <th className="px-4 py-2">Capacity</th>
-                <th className="px-4 py-2">Remaining</th>
-                <th className="px-4 py-2">Available</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.map((s) => (
-                <tr key={s.start} className="border-t">
-                  <td className="px-4 py-2">{s.start}</td>
-                  <td className="px-4 py-2">{s.end}</td>
-                  <td className="px-4 py-2">{s.bookedCount}</td>
-                  <td className="px-4 py-2">{s.maxCapacity}</td>
-                  <td className="px-4 py-2">{s.remainingCapacity}</td>
-                  <td className="px-4 py-2">{s.available ? 'Yes' : 'No'}</td>
+        <div className="bg-white rounded-xl border border-gray-100">
+          <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+            <table className="w-full min-w-full text-sm">
+              <thead className="bg-gray-50 text-left">
+                <tr>
+                  <th className="px-4 py-2 whitespace-nowrap">Start</th>
+                  <th className="px-4 py-2 whitespace-nowrap">End</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Booked</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Capacity</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Remaining</th>
+                  <th className="px-4 py-2 whitespace-nowrap">Available</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {preview.map((s) => (
+                  <tr key={s.start} className="border-t">
+                    <td className="px-4 py-2 whitespace-nowrap">{s.start}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{s.end}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{s.bookedCount}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{s.maxCapacity}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{s.remainingCapacity}</td>
+                    <td className="px-4 py-2 whitespace-nowrap">{s.available ? 'Yes' : 'No'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : null}
     </div>

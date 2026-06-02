@@ -97,7 +97,7 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+    <section className="bg-white rounded-xl border border-gray-100 shadow-sm">
       <div className="flex items-center gap-2 px-6 py-4 border-b border-gray-100 bg-gray-50">
         <Icon className="w-5 h-5 text-blue-600" />
         <h3 className="text-lg font-medium text-gray-800">{title}</h3>
@@ -174,7 +174,7 @@ export function StaffAppointmentDetails() {
   const nonFileResponses = formResponses.filter((r) => r.fieldType !== 'file');
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <Link
@@ -260,11 +260,11 @@ export function StaffAppointmentDetails() {
         {nonFileResponses.length === 0 ? (
           <p className="text-sm text-gray-500">No form responses submitted.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-gray-100">
-            <table className="w-full text-sm">
+          <div className="w-full overflow-x-auto rounded-lg border border-gray-100 [scrollbar-gutter:stable]">
+            <table className="w-full min-w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="text-left py-3 px-4 text-gray-600 font-medium w-1/3">Field</th>
+                  <th className="text-left py-3 px-4 text-gray-600 font-medium w-1/3 whitespace-nowrap">Field</th>
                   <th className="text-left py-3 px-4 text-gray-600 font-medium">Response</th>
                 </tr>
               </thead>

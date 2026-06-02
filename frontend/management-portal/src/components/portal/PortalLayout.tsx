@@ -68,12 +68,12 @@ export function PortalLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="bento-shell flex min-h-screen">
       <aside
-        className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed md:static inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transition-transform duration-300`}
+        className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} bento-sidebar fixed left-0 top-0 h-screen w-64 z-50 md:translate-x-0 transition-transform duration-300`}
       >
         <div className="h-full flex flex-col">
-          <div className="p-6 border-b border-gray-200">
+          <div className="p-6 border-b border-slate-200/80">
             <div className="flex items-start justify-between gap-2">
               <KebeleLogo title="KEBELE" subtitle={panelTitle} size="sm" />
               <button type="button" onClick={() => setSidebarOpen(false)} className="md:hidden shrink-0">
@@ -98,8 +98,10 @@ export function PortalLayout() {
                         navigate(item.path);
                         setSidebarOpen(false);
                       }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                        isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-100'
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 border-blue-200'
+                          : 'text-gray-700 border-transparent hover:bg-slate-50 hover:border-slate-200'
                       }`}
                     >
                       <Icon className="w-5 h-5" />
@@ -111,11 +113,11 @@ export function PortalLayout() {
             </ul>
           </nav>
 
-          <div className="p-4 border-t border-gray-200">
+          <div className="p-4 border-t border-slate-200/80">
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-gray-700 hover:bg-slate-50 hover:border-slate-200 transition-colors"
             >
               <LogOut className="w-5 h-5" />
               <span>Log out</span>
@@ -124,8 +126,8 @@ export function PortalLayout() {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-h-screen">
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <div className="flex min-w-0 flex-1 flex-col md:ml-64">
+        <header className="bento-topbar">
           <div className="px-4 md:px-8 py-4 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button type="button" onClick={() => setSidebarOpen(true)} className="md:hidden">
@@ -142,7 +144,7 @@ export function PortalLayout() {
             <div className="flex items-center gap-4">
               <button
                 type="button"
-                className="relative p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="relative p-2 hover:bg-slate-100 rounded-xl transition-colors"
                 aria-label="Notifications"
               >
                 <Bell className="w-5 h-5 text-gray-600" />
@@ -162,7 +164,7 @@ export function PortalLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 md:p-8">
+        <main className="bento-main flex-1 min-w-0 overflow-y-auto">
           <Outlet />
         </main>
       </div>

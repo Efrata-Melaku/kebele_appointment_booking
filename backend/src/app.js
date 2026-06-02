@@ -88,6 +88,7 @@ if (env.NODE_ENV !== 'production') {
 app.use('/api/auth', authRoutes);
 
 app.use('/api/admin/departments', protect, authorize(USER_ROLES.ADMIN), adminDepartmentRoutes);
+app.use('/api/departments', protect, authorize(USER_ROLES.ADMIN), adminDepartmentRoutes);
 app.use('/api/admin/services', protect, authorize(USER_ROLES.ADMIN), adminServiceRoutes);
 app.use('/api/admin/timeslots', protect, authorize(USER_ROLES.ADMIN), adminTimeSlotRoutes);
 app.use('/api/admin/staff', protect, authorize(USER_ROLES.ADMIN), adminStaffRoutes);

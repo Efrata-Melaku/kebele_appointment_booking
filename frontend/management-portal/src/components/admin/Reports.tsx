@@ -339,24 +339,26 @@ export function Reports() {
               {report.serviceUtilization.mostRequested.length === 0 ? (
                 <EmptyChart message="No services in this period." />
               ) : (
-                <table className="w-full text-sm">
+                <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+                  <table className="w-full min-w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-gray-500">
-                      <th className="py-2">Service</th>
-                      <th className="py-2">Dept</th>
-                      <th className="py-2 text-right">Count</th>
+                      <th className="py-2 whitespace-nowrap">Service</th>
+                      <th className="py-2 whitespace-nowrap">Dept</th>
+                      <th className="py-2 text-right whitespace-nowrap">Count</th>
                     </tr>
                   </thead>
                   <tbody>
                     {report.serviceUtilization.mostRequested.map((r) => (
                       <tr key={r.serviceId} className="border-b border-gray-50">
-                        <td className="py-2 text-gray-800">{r.serviceName}</td>
-                        <td className="py-2 text-gray-500">{r.departmentName}</td>
-                        <td className="py-2 text-right font-medium">{r.count}</td>
+                        <td className="py-2 text-gray-800 whitespace-nowrap">{r.serviceName}</td>
+                        <td className="py-2 text-gray-500 whitespace-nowrap">{r.departmentName}</td>
+                        <td className="py-2 text-right font-medium whitespace-nowrap">{r.count}</td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               )}
             </div>
 
@@ -365,24 +367,26 @@ export function Reports() {
               {report.serviceUtilization.leastRequested.length === 0 ? (
                 <EmptyChart message="No services in this period." />
               ) : (
-                <table className="w-full text-sm">
+                <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+                  <table className="w-full min-w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-gray-500">
-                      <th className="py-2">Service</th>
-                      <th className="py-2">Dept</th>
-                      <th className="py-2 text-right">Count</th>
+                      <th className="py-2 whitespace-nowrap">Service</th>
+                      <th className="py-2 whitespace-nowrap">Dept</th>
+                      <th className="py-2 text-right whitespace-nowrap">Count</th>
                     </tr>
                   </thead>
                   <tbody>
                     {report.serviceUtilization.leastRequested.map((r) => (
                       <tr key={r.serviceId} className="border-b border-gray-50">
-                        <td className="py-2 text-gray-800">{r.serviceName}</td>
-                        <td className="py-2 text-gray-500">{r.departmentName}</td>
-                        <td className="py-2 text-right font-medium">{r.count}</td>
+                        <td className="py-2 text-gray-800 whitespace-nowrap">{r.serviceName}</td>
+                        <td className="py-2 text-gray-500 whitespace-nowrap">{r.departmentName}</td>
+                        <td className="py-2 text-right font-medium whitespace-nowrap">{r.count}</td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                  </table>
+                </div>
               )}
             </div>
           </div>
@@ -392,21 +396,21 @@ export function Reports() {
             {report.staffWorkload.length === 0 ? (
               <EmptyChart message="No staff status updates in this period." />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+                <table className="w-full min-w-full text-sm">
                   <thead>
                     <tr className="border-b text-left text-gray-500">
-                      <th className="py-2 pr-4">Staff member</th>
-                      <th className="py-2 pr-4 text-right">Completed</th>
-                      <th className="py-2 text-right">Status updates</th>
+                      <th className="py-2 pr-4 whitespace-nowrap">Staff member</th>
+                      <th className="py-2 pr-4 text-right whitespace-nowrap">Completed</th>
+                      <th className="py-2 text-right whitespace-nowrap">Status updates</th>
                     </tr>
                   </thead>
                   <tbody>
                     {report.staffWorkload.map((r) => (
                       <tr key={r.staffId} className="border-b border-gray-50">
-                        <td className="py-2 text-gray-800">{r.staffName}</td>
-                        <td className="py-2 text-right font-medium">{r.completedCount}</td>
-                        <td className="py-2 text-right text-gray-600">{r.totalHandled}</td>
+                        <td className="py-2 text-gray-800 whitespace-nowrap">{r.staffName}</td>
+                        <td className="py-2 text-right font-medium whitespace-nowrap">{r.completedCount}</td>
+                        <td className="py-2 text-right text-gray-600 whitespace-nowrap">{r.totalHandled}</td>
                       </tr>
                     ))}
                   </tbody>

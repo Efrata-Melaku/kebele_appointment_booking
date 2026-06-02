@@ -324,7 +324,7 @@ const workScheduleTemplateSchema = Joi.object({
 }).min(1);
 
 const officeOverrideSchema = Joi.object({
-  date: Joi.date().required(),
+  date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
   isClosed: Joi.boolean().default(false),
   workStart: Joi.string().pattern(timePattern).allow(null, '').optional(),
   workEnd: Joi.string().pattern(timePattern).allow(null, '').optional(),
@@ -333,16 +333,16 @@ const officeOverrideSchema = Joi.object({
 });
 
 const myAppointmentsQuerySchema = Joi.object({
-  phone: ethiopianPhoneField(true),
+  phone: ethiopianPhoneField(false),
   appointmentNumber: Joi.string().trim().max(64).optional(),
-});
+}).or('phone', 'appointmentNumber');
 
 const getAppointmentByRefQuerySchema = Joi.object({
   phone: ethiopianPhoneField(true),
 });
 
 const serviceOverrideSchema = Joi.object({
-  date: Joi.date().required(),
+  date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
   serviceId: Joi.number().integer().positive().required(),
   serviceDisabled: Joi.boolean().default(false),
   workStart: Joi.string().pattern(timePattern).allow(null, '').optional(),

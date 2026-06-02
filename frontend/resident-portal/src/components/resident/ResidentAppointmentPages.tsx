@@ -4,11 +4,17 @@ type Props = {
   pageTitle: string;
   pageDescription: string;
   highlight?: 'track' | 'manage';
+  viewMode?: 'default' | 'feedback';
 };
 
-function ResidentAppointmentsPage({ pageTitle, pageDescription, highlight }: Props) {
+function ResidentAppointmentsPage({ pageTitle, pageDescription, highlight, viewMode }: Props) {
   return (
-    <MyAppointments pageTitle={pageTitle} pageDescription={pageDescription} highlight={highlight} />
+    <MyAppointments
+      pageTitle={pageTitle}
+      pageDescription={pageDescription}
+      highlight={highlight}
+      viewMode={viewMode}
+    />
   );
 }
 
@@ -46,8 +52,9 @@ export function FeedbackPage() {
   return (
     <ResidentAppointmentsPage
       pageTitle="Feedback"
-      pageDescription="Submit feedback for completed appointments."
-      highlight="manage"
+      pageDescription="Search and submit feedback for your appointments."
+      highlight="track"
+      viewMode="feedback"
     />
   );
 }

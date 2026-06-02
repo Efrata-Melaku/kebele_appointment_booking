@@ -15,7 +15,9 @@
     "dev:all": "npx concurrently -n resident,management -c blue,green \"npm run dev -w resident-portal\" \"npm run dev -w management-portal\"",
     "build": "npm run build -w resident-portal && npm run build -w management-portal",
     "build:resident": "npm run build -w resident-portal",
-    "build:management": "npm run build -w management-portal"
+    "build:management": "npm run build -w management-portal",
+    "typecheck": "tsc -b",
+    "check:imports": "node scripts/check-imports.mjs && node scripts/check-backend-requires.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

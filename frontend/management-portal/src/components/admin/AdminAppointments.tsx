@@ -181,23 +181,23 @@ export function AdminAppointments() {
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       ) : null}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {loading ? (
           <TableSkeleton rows={7} cols={10} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+            <table className="w-full min-w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="text-left py-3 px-4 text-gray-600">Appointment #</th>
-                  <th className="text-left py-3 px-4 text-gray-600">Resident</th>
-                  <th className="text-left py-3 px-4 text-gray-600">Phone</th>
-                  <th className="text-left py-3 px-4 text-gray-600">Service</th>
-                  <th className="text-left py-3 px-4 text-gray-600">Department</th>
+                  <th className="text-left py-3 px-4 text-gray-600 whitespace-nowrap">Appointment #</th>
+                  <th className="text-left py-3 px-4 text-gray-600 whitespace-nowrap">Resident</th>
+                  <th className="text-left py-3 px-4 text-gray-600 whitespace-nowrap">Phone</th>
+                  <th className="text-left py-3 px-4 text-gray-600 whitespace-nowrap">Service</th>
+                  <th className="text-left py-3 px-4 text-gray-600 whitespace-nowrap">Department</th>
                   <th className="text-left py-3 px-4 text-gray-600">Date</th>
                   <th className="text-left py-3 px-4 text-gray-600">Time</th>
                   <th className="text-left py-3 px-4 text-gray-600">Status</th>
-                  <th className="text-left py-3 px-4 text-gray-600">Created</th>
+                  <th className="text-left py-3 px-4 text-gray-600 whitespace-nowrap">Created</th>
                   <th className="py-3 px-4" />
                 </tr>
               </thead>
@@ -211,18 +211,18 @@ export function AdminAppointments() {
                 ) : (
                   items.map((row) => (
                     <tr key={row.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="py-3 px-4 font-mono text-xs">{row.appointmentNumber}</td>
-                      <td className="py-3 px-4">{row.residentName}</td>
-                      <td className="py-3 px-4">{row.phone}</td>
-                      <td className="py-3 px-4">{row.serviceName}</td>
-                      <td className="py-3 px-4">{row.departmentName}</td>
+                      <td className="py-3 px-4 font-mono text-xs whitespace-nowrap">{row.appointmentNumber}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">{row.residentName}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">{row.phone}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">{row.serviceName}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">{row.departmentName}</td>
                       <td className="py-3 px-4">{fmtDate(row.timeSlot?.date)}</td>
                       <td className="py-3 px-4">{fmtTime(row.timeSlot?.startTime)}</td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100">{row.status}</span>
                       </td>
-                      <td className="py-3 px-4">{fmtDate(row.createdAt)}</td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 whitespace-nowrap">{fmtDate(row.createdAt)}</td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
                         <Link
                           to={managementRoutes.admin.appointment(row.id)}
                           className="inline-flex items-center gap-1 text-blue-600 hover:underline"

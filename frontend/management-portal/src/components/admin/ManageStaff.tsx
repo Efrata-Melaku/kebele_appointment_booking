@@ -330,20 +330,20 @@ export function ManageStaff() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {loading ? (
           <TableSkeleton rows={7} cols={6} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+            <table className="w-full min-w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Name</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Email</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Phone</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Department</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Name</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Email</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Phone</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Department</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Services</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Actions</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -356,16 +356,16 @@ export function ManageStaff() {
                 ) : (
                   staffList.map((member) => (
                     <tr key={member.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="py-4 px-6 text-sm text-gray-800">{member.name}</td>
-                      <td className="py-4 px-6 text-sm text-gray-600">{member.email}</td>
-                      <td className="py-4 px-6 text-sm text-gray-600">{member.phone || '—'}</td>
-                      <td className="py-4 px-6 text-sm text-gray-600">{member.department?.name ?? '—'}</td>
+                      <td className="py-4 px-6 text-sm text-gray-800 whitespace-nowrap">{member.name}</td>
+                      <td className="py-4 px-6 text-sm text-gray-600 whitespace-nowrap">{member.email}</td>
+                      <td className="py-4 px-6 text-sm text-gray-600 whitespace-nowrap">{member.phone || '—'}</td>
+                      <td className="py-4 px-6 text-sm text-gray-600 whitespace-nowrap">{member.department?.name ?? '—'}</td>
                       <td className="py-4 px-6 text-sm text-gray-600 max-w-xs">
                         {member.staffServiceAssignments?.length
                           ? member.staffServiceAssignments.map((a) => a.service.name).join(', ')
                           : '—'}
                       </td>
-                      <td className="py-4 px-6 flex gap-1">
+                      <td className="py-4 px-6 flex gap-1 whitespace-nowrap">
                         <button
                           type="button"
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"

@@ -78,6 +78,7 @@ type Props = {
   onSubmitBooking: (fd: FormData) => Promise<void>;
 
   onDateChange?: (date: string) => void;
+  emptySlotsMessage?: string;
 
   initialPersonal: {
 
@@ -118,6 +119,7 @@ export function BookingFormInner({
   onSubmitBooking,
 
   onDateChange,
+  emptySlotsMessage,
 
   initialPersonal,
 
@@ -185,6 +187,8 @@ export function BookingFormInner({
 
       onDateChange={onDateChange}
 
+      emptySlotsMessage={emptySlotsMessage}
+
     />
 
   );
@@ -216,6 +220,8 @@ function BookingFormFields({
   onSubmitBooking,
 
   onDateChange,
+
+  emptySlotsMessage,
 
 }: Props & {
 
@@ -552,7 +558,7 @@ function BookingFormFields({
           ) : residentSlots.length === 0 ? (
 
             <p className="mt-2 text-sm text-gray-500">
-              No available appointments for this date.
+              {emptySlotsMessage || 'No available appointments for this date.'}
             </p>
 
           ) : (

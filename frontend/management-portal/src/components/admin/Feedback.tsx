@@ -40,18 +40,14 @@ export function Feedback() {
   const [selected, setSelected] = useState<Row | null>(null);
 
   const [rating, setRating] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
 
   const queryString = useMemo(() => {
     const q = new URLSearchParams();
     q.set('page', String(page));
     q.set('limit', String(DEFAULT_PAGE_LIMIT));
     if (rating) q.set('rating', rating);
-    if (dateFrom) q.set('dateFrom', dateFrom);
-    if (dateTo) q.set('dateTo', dateTo);
     return q.toString();
-  }, [page, rating, dateFrom, dateTo]);
+  }, [page, rating]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,7 +113,7 @@ export function Feedback() {
           e.preventDefault();
           setPage(1);
         }}
-        className="bg-white rounded-xl border p-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-3"
+        className="bg-white rounded-xl border p-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-3"
       >
         <select
           className="border rounded-lg px-3 py-2 text-sm"
@@ -131,18 +127,6 @@ export function Feedback() {
             </option>
           ))}
         </select>
-        <input
-          type="date"
-          className="border rounded-lg px-3 py-2 text-sm"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-        />
-        <input
-          type="date"
-          className="border rounded-lg px-3 py-2 text-sm"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-        />
         <button type="submit" className="bg-blue-600 text-white rounded-lg text-sm py-2">
           Apply filters
         </button>
@@ -183,46 +167,48 @@ export function Feedback() {
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       ) : null}
 
-      <div className="bg-white rounded-xl border overflow-hidden">
+      <div className="bg-white rounded-xl border">
         {loading ? (
           <TableSkeleton rows={7} cols={4} />
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left py-3 px-4">Rating</th>
-                <th className="text-left py-3 px-4">Comment</th>
-                <th className="text-left py-3 px-4">Submitted</th>
-                <th className="py-3 px-4" />
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
+          <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+            <table className="w-full min-w-full text-sm">
+              <thead className="bg-gray-50 border-b">
                 <tr>
-                  <td colSpan={4} className="py-12 text-center text-gray-500">
-                    No feedback yet
-                  </td>
+                  <th className="text-left py-3 px-4 whitespace-nowrap">Rating</th>
+                  <th className="text-left py-3 px-4">Comment</th>
+                  <th className="text-left py-3 px-4 whitespace-nowrap">Submitted</th>
+                  <th className="py-3 px-4 whitespace-nowrap" />
                 </tr>
-              ) : (
-                items.map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4">{r.rating}/5</td>
-                    <td className="py-3 px-4 max-w-lg">{r.comment || '—'}</td>
-                    <td className="py-3 px-4">{new Date(r.createdAt).toLocaleString()}</td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        type="button"
-                        className="text-blue-600 hover:underline"
-                        onClick={() => setSelected(r)}
-                      >
-                        View
-                      </button>
+              </thead>
+              <tbody>
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-12 text-center text-gray-500">
+                      No feedback yet
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  items.map((r) => (
+                    <tr key={r.id} className="border-b hover:bg-gray-50">
+                      <td className="py-3 px-4 whitespace-nowrap">{r.rating}/5</td>
+                      <td className="py-3 px-4 max-w-lg">{r.comment || '—'}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          className="text-blue-600 hover:underline"
+                          onClick={() => setSelected(r)}
+                        >
+                          View
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
         <PaginationBar pagination={pagination} loading={loading} onPageChange={setPage} />
       </div>

@@ -106,7 +106,7 @@ export function AdminAppointmentDetails() {
   const textResponses = formResponses.filter((r) => r.fieldType !== 'file');
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full min-w-0">
       <div>
         <Link
           to={managementRoutes.admin.appointments}

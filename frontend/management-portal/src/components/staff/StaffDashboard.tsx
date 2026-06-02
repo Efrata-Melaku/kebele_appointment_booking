@@ -180,23 +180,23 @@ export function StaffDashboard() {
         </div>
       ) : null}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         {loading ? (
           <TableSkeleton rows={7} cols={9} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="w-full overflow-x-auto [scrollbar-gutter:stable]">
+            <table className="w-full min-w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Appointment #</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Resident</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Phone</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Service</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Department</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Appointment #</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Resident</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Phone</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Service</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Department</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Date</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Time</th>
                   <th className="text-left py-4 px-6 text-sm text-gray-600">Status</th>
-                  <th className="text-left py-4 px-6 text-sm text-gray-600">Actions</th>
+                  <th className="text-left py-4 px-6 text-sm text-gray-600 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -209,14 +209,14 @@ export function StaffDashboard() {
                 ) : (
                   appointments.map((apt) => (
                     <tr key={apt.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="py-4 px-6 text-sm font-mono">{apt.appointmentNumber}</td>
-                      <td className="py-4 px-6 text-sm">{residentName(apt)}</td>
-                      <td className="py-4 px-6 text-sm">{residentPhone(apt)}</td>
-                      <td className="py-4 px-6 text-sm">{serviceLabel(apt)}</td>
-                      <td className="py-4 px-6 text-sm">{departmentLabel(apt)}</td>
+                      <td className="py-4 px-6 text-sm font-mono whitespace-nowrap">{apt.appointmentNumber}</td>
+                      <td className="py-4 px-6 text-sm whitespace-nowrap">{residentName(apt)}</td>
+                      <td className="py-4 px-6 text-sm whitespace-nowrap">{residentPhone(apt)}</td>
+                      <td className="py-4 px-6 text-sm whitespace-nowrap">{serviceLabel(apt)}</td>
+                      <td className="py-4 px-6 text-sm whitespace-nowrap">{departmentLabel(apt)}</td>
                       <td className="py-4 px-6 text-sm">{formatDate(apt.timeSlot?.date)}</td>
                       <td className="py-4 px-6 text-sm">{formatTime(apt.timeSlot?.startTime)}</td>
-                      <td className="py-4 px-6">
+                      <td className="py-4 px-6 whitespace-nowrap">
                         <span
                           className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadgeClass(apt.status)}`}
                         >

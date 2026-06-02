@@ -59,7 +59,7 @@ const actions = [
 export function ResidentHome() {
   return (
     <div className="space-y-10">
-      <section className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-8 md:p-12 text-white">
+      <section className="rounded-3xl border border-blue-300/40 bg-gradient-to-r from-blue-600 to-indigo-600 p-8 md:p-12 text-white shadow-[0_20px_50px_rgba(37,99,235,0.35)]">
         <KebeleLogo
           size="lg"
           showText={false}
@@ -82,14 +82,14 @@ export function ResidentHome() {
 
       <section>
         <h2 className="text-xl font-semibold text-gray-800 mb-4">What would you like to do?</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bento-grid">
           {actions.map((action) => {
             const Icon = action.icon;
             return (
               <Link
                 key={action.to}
                 to={action.to}
-                className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm hover:shadow-md transition-shadow group"
+                className="bento-card p-6 transition-all hover:-translate-y-0.5 hover:shadow-lg group"
               >
                 <div
                   className={`${action.color} w-12 h-12 rounded-lg flex items-center justify-center mb-4 group-hover:scale-105 transition-transform`}

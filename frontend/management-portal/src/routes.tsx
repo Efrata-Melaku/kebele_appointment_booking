@@ -11,6 +11,7 @@ import { ManageStaff } from './components/admin/ManageStaff';
 import { AppointmentLimits } from './components/admin/AppointmentLimits';
 import { ScheduleOverrides } from './components/admin/ScheduleOverrides';
 import { ServicesManagement } from './components/admin/ServicesManagement';
+import { AdminDepartments } from './components/admin/AdminDepartments';
 import { ServiceFormBuilder } from './components/admin/ServiceFormBuilder';
 import { Feedback } from './components/admin/Feedback';
 import { AdminAppointments } from './components/admin/AdminAppointments';
@@ -52,7 +53,7 @@ export const router = createBrowserRouter([
               { path: 'appointments/:id', Component: AdminAppointmentDetails },
               { path: 'staff', Component: ManageStaff },
               { path: 'services', Component: ServicesManagement },
-              { path: 'departments', Component: ServicesManagement },
+              { path: 'departments', Component: AdminDepartments },
               { path: 'limits', Component: AppointmentLimits },
               { path: 'schedule', Component: ScheduleOverrides },
               { path: 'form-builder', Component: ServiceFormBuilder },

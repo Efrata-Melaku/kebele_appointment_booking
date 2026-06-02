@@ -3,7 +3,6 @@ const feedbackModel = require('../models/feedback.model');
 const { resolveDateFilterRange } = require('../utils/dateRange');
 const { parsePagination, buildPaginationMeta } = require('../utils/pagination');
 const { runTransaction } = require('../models/_client');
-const { APPOINTMENT_STATUS } = require('../config/constants');
 const {
   assertPhoneMatchesResident,
   requireNormalizedPhone,
@@ -50,18 +49,7 @@ async function loadAppointmentForResident(appointmentId, phone) {
   return { appointment, normalizedPhone };
 }
 
-function assertCanSubmitFeedback(appointment) {
-  if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
-    const err = new Error('Cannot submit feedback for a cancelled appointment');
-    err.statusCode = 400;
-    throw err;
-  }
-  if (appointment.status !== APPOINTMENT_STATUS.COMPLETED) {
-    const err = new Error('Feedback is only available after your appointment is completed');
-    err.statusCode = 400;
-    throw err;
-  }
-}
+function assertCanSubmitFeedback() {}
 
 class FeedbackService {
   async createResidentFeedback({ phone, appointmentId, rating, comment }) {
@@ -69,7 +57,7 @@ class FeedbackService {
     assertCanSubmitFeedback(appointment);
 
     if (appointment.feedbackId) {
-      const err = new Error('Feedback already exists for this appointment');
+      const err = new Error('Feedback has already been submitted for this appointment.');
       err.statusCode = 400;
       throw err;
     }
