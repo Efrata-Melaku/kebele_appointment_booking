@@ -13,10 +13,15 @@ const ALLOWED_MIMETYPES = new Set([
 
 const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname || '').toLowerCase();
-  const mimeOk = ALLOWED_MIMETYPES.has((file.mimetype || '').toLowerCase());
+  const mime = (file.mimetype || '').toLowerCase();
+  const mimeOk =
+    ALLOWED_MIMETYPES.has(mime) ||
+    mime === 'application/octet-stream' ||
+    mime === '';
   const extOk = ALLOWED_EXTENSIONS.has(ext);
 
-  if (mimeOk && extOk) {
+  // Require a known extension; accept common browsers sending generic octet-stream MIME.
+  if (extOk && (mimeOk || mime === 'application/octet-stream' || !mime)) {
     return cb(null, true);
   }
   cb(new Error('Invalid file type. Only PDF, JPG, JPEG, and PNG files are allowed.'));

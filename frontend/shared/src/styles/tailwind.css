@@ -1,0 +1,6 @@
+@import 'tailwindcss' source(none);
+@source '../**/*.{js,ts,jsx,tsx}';
+@source '../../../resident-portal/src/**/*.{js,ts,jsx,tsx}';
+@source '../../../management-portal/src/**/*.{js,ts,jsx,tsx}';
+
+@import 'tw-animate-css';

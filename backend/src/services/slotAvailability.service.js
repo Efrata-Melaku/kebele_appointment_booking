@@ -54,6 +54,9 @@ async function buildSlotsWithCapacity(serviceId, dateInput) {
 
   const schedule = await resolveDaySchedule(serviceIdNum, dayStart);
   if (schedule.closed) {
+    if (schedule.reason === 'office_closed') {
+      throw new Error('Office is closed on this date.');
+    }
     return [];
   }
 

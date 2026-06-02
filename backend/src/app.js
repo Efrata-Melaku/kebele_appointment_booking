@@ -36,8 +36,23 @@ const { USER_ROLES } = require('./config/constants');
 const app = express();
 
 app.use(helmet());
+function corsAllowedOrigins() {
+  if (process.env.NODE_ENV !== 'production') return '*';
+  const origins = [
+    process.env.FRONTEND_URL,
+    process.env.FRONTEND_RESIDENT_URL,
+    process.env.FRONTEND_MANAGEMENT_URL,
+  ].filter(Boolean);
+  if (process.env.FRONTEND_URLS) {
+    origins.push(
+      ...process.env.FRONTEND_URLS.split(',').map((s) => s.trim()).filter(Boolean),
+    );
+  }
+  return origins.length ? origins : true;
+}
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL : '*',
+  origin: corsAllowedOrigins(),
   credentials: true,
 }));
 
@@ -73,6 +88,7 @@ if (env.NODE_ENV !== 'production') {
 app.use('/api/auth', authRoutes);
 
 app.use('/api/admin/departments', protect, authorize(USER_ROLES.ADMIN), adminDepartmentRoutes);
+app.use('/api/departments', protect, authorize(USER_ROLES.ADMIN), adminDepartmentRoutes);
 app.use('/api/admin/services', protect, authorize(USER_ROLES.ADMIN), adminServiceRoutes);
 app.use('/api/admin/timeslots', protect, authorize(USER_ROLES.ADMIN), adminTimeSlotRoutes);
 app.use('/api/admin/staff', protect, authorize(USER_ROLES.ADMIN), adminStaffRoutes);

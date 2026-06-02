@@ -50,6 +50,18 @@ async function countDepartments(where = {}, tx) {
   return getClient(tx).department.count({ where });
 }
 
+async function countDepartmentServices(id, tx) {
+  return getClient(tx).service.count({
+    where: { departmentId: Number(id) },
+  });
+}
+
+async function countDepartmentStaff(id, tx) {
+  return getClient(tx).user.count({
+    where: { departmentId: Number(id) },
+  });
+}
+
 module.exports = {
   createDepartment,
   findDepartmentById,
@@ -59,4 +71,6 @@ module.exports = {
   updateDepartment,
   deleteDepartment,
   countDepartments,
+  countDepartmentServices,
+  countDepartmentStaff,
 };

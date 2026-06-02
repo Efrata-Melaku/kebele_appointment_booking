@@ -7,6 +7,10 @@ class ResidentController {
       const phone = req.query.phone;
       const appointmentNumber = req.query.appointmentNumber?.trim();
 
+      if (!phone && !appointmentNumber) {
+        return errorResponse(res, 'Phone number or appointment number is required', 400);
+      }
+
       if (appointmentNumber) {
         const data = await appointmentService.getAppointmentByRefForResident(
           appointmentNumber,

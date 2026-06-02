@@ -22,12 +22,10 @@ class DepartmentService {
 
   async getDepartments() {
     return departmentModel.getDepartments({
-      include: {
-        services: {
-          include: {
-            _count: { select: { appointments: true } },
-          },
-        },
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
       },
     });
   }
@@ -68,6 +66,22 @@ class DepartmentService {
   }
 
   async deleteDepartment(id) {
+    const existing = await departmentModel.findDepartmentById(id, {
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new NotFoundError('Department not found');
+    }
+
+    const [serviceCount, staffCount] = await Promise.all([
+      departmentModel.countDepartmentServices(id),
+      departmentModel.countDepartmentStaff(id),
+    ]);
+
+    if (serviceCount > 0 || staffCount > 0) {
+      throw new ConflictError('Department contains related records and cannot be deleted.');
+    }
+
     try {
       await departmentModel.deleteDepartment(id);
     } catch (err) {

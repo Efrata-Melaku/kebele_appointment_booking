@@ -884,14 +884,16 @@ class AppointmentService {
   }
 
   async getAppointmentByRefForResident(ref, phone) {
-    const normalizedPhone = requireNormalizedPhone(phone);
+    const normalizedPhone = phone ? requireNormalizedPhone(phone) : null;
 
     if (isAppointmentNumberRef(ref)) {
       const group = await this.getAppointmentGroupBundleByNumber(ref.trim());
       if (!group) {
         throw new Error('Appointment not found');
       }
-      assertPhoneMatchesResident(group.resident.phone, normalizedPhone);
+      if (normalizedPhone) {
+        assertPhoneMatchesResident(group.resident.phone, normalizedPhone);
+      }
 
       const items = await formSubmissionService.attachSubmissionsToMany(
         group.appointments.map((a) => attachTimeSlot({ ...a, group }))
@@ -911,7 +913,9 @@ class AppointmentService {
       if (!apt) {
         throw new Error('Appointment not found');
       }
-      assertPhoneMatchesResident(apt.group.resident.phone, normalizedPhone);
+      if (normalizedPhone) {
+        assertPhoneMatchesResident(apt.group.resident.phone, normalizedPhone);
+      }
 
       const withResponses = await formSubmissionService.attachSubmissionToAppointment(
         attachTimeSlot(apt)

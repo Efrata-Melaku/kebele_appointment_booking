@@ -19,7 +19,11 @@ class AppointmentController {
       const slots = await appointmentService.getAvailableSlots(serviceId, date);
       successResponse(res, 'Available slots retrieved successfully', slots);
     } catch (error) {
-      if (error.message.includes('not found') || error.message.includes('Invalid date')) {
+      if (
+        error.message.includes('not found') ||
+        error.message.includes('Invalid date') ||
+        error.message.includes('Office is closed on this date')
+      ) {
         return errorResponse(res, error.message, 400);
       }
       errorResponse(res, 'Failed to retrieve available slots', 500);
