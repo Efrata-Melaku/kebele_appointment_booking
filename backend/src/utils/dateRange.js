@@ -70,6 +70,32 @@ function normalizeCalendarDay(dateInput) {
 }
 
 /** Format a stored @db.Date or YMD string as YYYY-MM-DD (UTC calendar day). */
+/** YYYY-MM-DD for the server-local calendar day of an instant (matches slot generation). */
+function calendarYmdFromLocalInstant(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mo}-${day}`;
+}
+
+/** Prisma @db.Date key aligned with slotStartTime's local calendar day. */
+function slotDateFromSlotStartTime(slotStartTime) {
+  const ymd = calendarYmdFromLocalInstant(slotStartTime);
+  return ymd ? toPrismaDateOnly(ymd) : null;
+}
+
+/** Local wall-clock instant from a calendar day + HH:mm (matches slot generation). */
+function combineSlotDateAndTime(dayInput, hhmm) {
+  const normalized = normalizeCalendarDay(dayInput);
+  if (!normalized) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm).trim());
+  if (!m) return null;
+  const d = new Date(normalized.dayStart);
+  d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  return d;
+}
+
 function formatDateOnlyYmd(value) {
   if (value == null || value === '') return null;
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
@@ -191,6 +217,9 @@ function describeDateFilter(filters = {}) {
 module.exports = {
   parseYmd,
   toPrismaDateOnly,
+  calendarYmdFromLocalInstant,
+  slotDateFromSlotStartTime,
+  combineSlotDateAndTime,
   formatDateOnlyYmd,
   normalizeCalendarDay,
   startOfLocalDay,

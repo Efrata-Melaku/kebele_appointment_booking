@@ -94,6 +94,12 @@ const availableSlotsQuerySchema = Joi.object({
   date: Joi.string()
     .pattern(/^\d{4}-\d{2}-\d{2}$/)
     .required(),
+  excludeAppointmentId: Joi.number().integer().positive().optional(),
+});
+
+const editAppointmentQuerySchema = Joi.object({
+  phone: ethiopianPhoneField(true),
+  appointmentItemId: Joi.number().integer().positive().optional(),
 });
 
 const slotBookingFields = {
@@ -182,6 +188,12 @@ const updateAppointmentFormResponsesSchema = Joi.object({
   phone: ethiopianPhoneField(true),
   appointmentItemId: Joi.alternatives()
     .try(Joi.number().integer().positive(), Joi.string().pattern(/^\d+$/))
+    .optional(),
+  slotDate: Joi.string()
+    .pattern(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  slotStart: Joi.string()
+    .pattern(/^([01]?\d|2[0-3]):[0-5]\d$/)
     .optional(),
   responses: dynamicFormResponsesJson,
   dynamicFields: dynamicFormResponsesJson,
@@ -364,6 +376,7 @@ module.exports = {
   searchFormResponsesSchema,
   updateAppointmentFormResponsesSchema,
   availableSlotsQuerySchema,
+  editAppointmentQuerySchema,
   createAppointmentSchema,
   rescheduleAppointmentSchema,
   cancelAppointmentQuerySchema,

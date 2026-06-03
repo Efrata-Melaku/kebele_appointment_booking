@@ -26,7 +26,7 @@ function assertScheduleAllowsBooking(schedule) {
   throw new Error(closedReasonMessage(schedule.reason));
 }
 
-async function countBookingsForDay(serviceId, prismaDate) {
+async function countBookingsForDay(serviceId, prismaDate, excludeAppointmentId) {
   const appointments = await appointmentModel.findAppointmentsByServiceAndDay(
     serviceId,
     prismaDate,
@@ -35,6 +35,12 @@ async function countBookingsForDay(serviceId, prismaDate) {
 
   const map = new Map();
   for (const a of appointments) {
+    if (
+      excludeAppointmentId != null &&
+      Number(a.id) === Number(excludeAppointmentId)
+    ) {
+      continue;
+    }
     const key = slotStartKey(a.slotStartTime);
     map.set(key, (map.get(key) || 0) + 1);
   }
@@ -44,7 +50,7 @@ async function countBookingsForDay(serviceId, prismaDate) {
 /**
  * Internal: all intervals with capacity metadata.
  */
-async function buildSlotsWithCapacity(serviceId, dateInput) {
+async function buildSlotsWithCapacity(serviceId, dateInput, options = {}) {
   const serviceIdNum = Number(serviceId);
   const normalized = normalizeCalendarDay(dateInput);
   if (!normalized) {
@@ -82,15 +88,19 @@ async function buildSlotsWithCapacity(serviceId, dateInput) {
     slots: intervals.map((s) => ({ start: s.start, end: s.end })),
   });
 
-  const bookedByStart = await countBookingsForDay(serviceIdNum, schedule.prismaDate);
+  const bookedByStart = await countBookingsForDay(
+    serviceIdNum,
+    schedule.prismaDate,
+    options.excludeAppointmentId
+  );
   return applyCapacityToSlots(intervals, bookedByStart, service.staffCount);
 }
 
 /**
  * Resident booking: only available slots, no capacity/staff fields.
  */
-async function getAvailableSlotsForResidents(serviceId, dateInput) {
-  const withCapacity = await buildSlotsWithCapacity(serviceId, dateInput);
+async function getAvailableSlotsForResidents(serviceId, dateInput, options = {}) {
+  const withCapacity = await buildSlotsWithCapacity(serviceId, dateInput, options);
   return toResidentSlotList(withCapacity);
 }
 

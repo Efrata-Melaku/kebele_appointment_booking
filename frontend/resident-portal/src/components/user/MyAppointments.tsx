@@ -1,12 +1,19 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Edit, Trash2, MessageSquare, X, Loader2, FileEdit, Mail } from 'lucide-react';
-import { http } from '@kebele/shared/lib/http';
+import { Edit, Trash2, MessageSquare, X, Loader2, Mail } from 'lucide-react';
 import { apiFetch, apiJson } from '@kebele/shared/lib/api';
+import { getApiErrorMessage } from '@kebele/shared/lib/apiError';
+import {
+  appointmentDateYmd,
+  canRescheduleOrEdit,
+  slotStartHHmmFromInstant,
+} from '@kebele/shared/lib/appointmentTiming';
+import { residentSlotEmptyMessage } from '@kebele/shared/lib/slotAvailabilityMessage';
+import { BookingFormInner } from '@kebele/shared/features/kebele/BookingFormInner';
+import type { ResidentSlot } from '@kebele/shared/features/kebele/slotDisplay';
 import {
   ETHIOPIAN_PHONE_MESSAGE,
   normalizeEthiopianPhone,
 } from '@kebele/shared/lib/ethiopianPhone';
-import { EditResponsesForm } from '@kebele/shared/features/kebele/EditResponsesForm';
 import { ResidentFeedbackModal } from '@kebele/shared/features/kebele/ResidentFeedbackModal';
 import type { FormResponseRow, ServiceFormFieldDef } from '@kebele/shared/features/kebele/formTypes';
 import type { JustBookedAppointment } from '@/lib/bookingConfirmation';
@@ -20,8 +27,30 @@ type Apt = {
   resident?: { phone?: string };
   service?: { name: string };
   timeSlot?: { date: string; startTime: string; endTime?: string };
+  slotStartTime?: string;
+  documentUrl?: string | null;
   formResponses?: FormResponseRow[];
   feedback?: { id: number; rating: number; comment?: string | null } | null;
+};
+
+type EditPayload = {
+  appointment: {
+    id: number;
+    appointmentNumber: string;
+    serviceId: number;
+    documentUrl?: string | null;
+  };
+  resident: {
+    fullName: string;
+    phone: string;
+    email?: string | null;
+    gender: string;
+  };
+  service: { id: number; name: string };
+  selectedSlot: { date?: string | null; startTime?: string | null; endTime?: string | null };
+  selectedDate: string;
+  formFields: ServiceFormFieldDef[];
+  existingValues: FormResponseRow[];
 };
 
 type MyAppointmentsProps = {
@@ -56,18 +85,14 @@ export function MyAppointments({
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackMode, setFeedbackMode] = useState<'create' | 'view' | 'edit'>('create');
-  const [showReschedule, setShowReschedule] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selected, setSelected] = useState<Apt | null>(null);
-
-  const [resSlots, setResSlots] = useState<
-    { id: number; startTime: string; endTime: string; start?: string; end?: string }[]
-  >([]);
+  const [resSlots, setResSlots] = useState<ResidentSlot[]>([]);
   const [resDate, setResDate] = useState('');
-  const [resSlotStart, setResSlotStart] = useState('');
   const [resBusy, setResBusy] = useState(false);
+  const [emptyEditSlotsMessage, setEmptyEditSlotsMessage] = useState('');
 
-  const [showEditForm, setShowEditForm] = useState(false);
-  const [editFields, setEditFields] = useState<ServiceFormFieldDef[]>([]);
+  const [editData, setEditData] = useState<EditPayload | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [resendBusyId, setResendBusyId] = useState<number | null>(null);
@@ -156,116 +181,133 @@ export function MyAppointments({
     }
   }
 
-  async function reloadSlots(serviceId: number, dateISO: string) {
+  function mergeCurrentSlot(
+    slots: ResidentSlot[],
+    current?: { startTime?: string | null; endTime?: string | null }
+  ): ResidentSlot[] {
+    const start = current?.startTime?.trim();
+    if (!start || slots.some((s) => s.startTime === start)) return slots;
+    return [
+      { id: 0, startTime: start, endTime: current?.endTime?.trim() || '' },
+      ...slots,
+    ];
+  }
+
+  async function reloadEditSlots(
+    serviceId: number,
+    dateISO: string,
+    appointmentId: number,
+    preserveSlot?: { startTime?: string | null; endTime?: string | null }
+  ) {
     setResBusy(true);
+    setEmptyEditSlotsMessage('');
     try {
-      const slots = await apiJson<
-        { id: number; startTime: string; endTime: string; start?: string; end?: string }[]
-      >(
-        `/api/user/appointments/available-slots?serviceId=${serviceId}&date=${encodeURIComponent(dateISO)}`,
+      const q = new URLSearchParams({
+        serviceId: String(serviceId),
+        date: dateISO,
+        excludeAppointmentId: String(appointmentId),
+      });
+      const slots = await apiJson<ResidentSlot[]>(
+        `/api/user/appointments/available-slots?${q.toString()}`,
         { skipAuth: true }
       );
-      setResSlots(slots);
-      setResSlotStart('');
-    } catch {
-      setResSlots([]);
+      setResSlots(mergeCurrentSlot(slots, preserveSlot));
+    } catch (e) {
+      setResSlots(mergeCurrentSlot([], preserveSlot));
+      const message =
+        (e as { response?: { data?: { error?: string } } }).response?.data?.error || '';
+      setEmptyEditSlotsMessage(residentSlotEmptyMessage(message));
     } finally {
       setResBusy(false);
     }
   }
 
-  async function openReschedule(apt: Apt) {
-    if (!apt.appointmentNumber) {
-      setError('Cannot reschedule: missing appointment reference');
-      return;
-    }
-    if (typeof apt.serviceId !== 'number') {
-      setError('Cannot reschedule: missing service id');
-      return;
-    }
-    setError('');
-    setSelected(apt);
-    const d = apt.timeSlot?.date
-      ? new Date(apt.timeSlot.date).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0];
-    setResDate(d);
-    setResSlotStart('');
-    setShowReschedule(true);
-    await reloadSlots(apt.serviceId, d);
+  function appointmentStartIso(apt: Apt): string | undefined {
+    const raw = apt.timeSlot?.startTime ?? apt.slotStartTime;
+    return raw != null ? String(raw) : undefined;
   }
 
-  async function openEditForm(apt: Apt) {
-    if (!apt.appointmentNumber || typeof apt.serviceId !== 'number') return;
-    setSelected(apt);
-    setShowEditForm(true);
-    setEditLoading(true);
+  async function openEditAppointment(apt: Apt) {
+    if (!apt.appointmentNumber) {
+      setError('Cannot edit: missing appointment reference');
+      return;
+    }
+    if (!searchedPhone?.trim()) {
+      setError('Search by phone number first to verify your identity.');
+      return;
+    }
+    const startIso = appointmentStartIso(apt);
+    if (!canRescheduleOrEdit(startIso)) {
+      setError(
+        'Rescheduling is only allowed when more than 24 hours remain before your appointment start time.'
+      );
+      return;
+    }
     setError('');
+    setSelected(apt);
+    setEditData(null);
+    setResSlots([]);
+    setShowEditModal(true);
+    setEditLoading(true);
     try {
-      const r = await http.get<{
-        success: boolean;
-        data: { fields: ServiceFormFieldDef[] };
-      }>(`/api/user/services/${apt.serviceId}/form-fields`);
-      const fields = r.data.success ? r.data.data.fields : [];
-      setEditFields(fields);
+      const q = new URLSearchParams({
+        phone: searchedPhone.trim(),
+        appointmentItemId: String(apt.id),
+      });
+      const { res, body } = await apiFetch<EditPayload>(
+        `/api/resident/appointments/${encodeURIComponent(apt.appointmentNumber)}/edit?${q.toString()}`,
+        { skipAuth: true }
+      );
+      if (!res.ok || !body?.success || !body.data) {
+        throw new Error((body as { error?: string })?.error || 'Could not load appointment for editing');
+      }
+      const data = body.data;
+      setEditData(data);
+      const selectedDate =
+        data.selectedDate ||
+        appointmentDateYmd(apt.timeSlot?.date, startIso) ||
+        new Date().toISOString().split('T')[0];
+      setResDate(selectedDate);
+      await reloadEditSlots(
+        data.appointment.serviceId,
+        selectedDate,
+        data.appointment.id,
+        data.selectedSlot
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load form');
-      setEditFields([]);
+      setError(getApiErrorMessage(e, 'Could not load appointment for editing'));
+      setShowEditModal(false);
+      setEditData(null);
     } finally {
       setEditLoading(false);
     }
   }
 
-  async function submitEditForm(fd: FormData) {
+  async function submitEditAppointment(fd: FormData) {
     if (!selected?.appointmentNumber || !searchedPhone?.trim()) return;
     setEditSubmitting(true);
     setError('');
-    fd.append('phone', searchedPhone.trim());
-    fd.append('appointmentItemId', String(selected.id));
-    try {
-      const res = await http.put(
-        `/api/user/appointments/${encodeURIComponent(selected.appointmentNumber)}/form-responses`,
-        fd
-      );
-      if (!res.data.success) throw new Error((res.data as { error?: string }).error || 'Failed');
-      setShowEditForm(false);
-      setSelected(null);
-      await reloadCurrentSearch();
-    } catch (e) {
-      const ax = e as { response?: { data?: { error?: string; details?: { message: string }[] } } };
-      const d = ax.response?.data?.details;
-      if (Array.isArray(d)) setError(d.map((x) => x.message).join(' · '));
-      else setError(ax.response?.data?.error || 'Update failed');
-    } finally {
-      setEditSubmitting(false);
-    }
-  }
-
-  async function applyReschedule() {
-    if (!selected || !selected.appointmentNumber || searchedPhone?.trim() === '' || !resSlotStart) return;
-    setResBusy(true);
     try {
       const { res, body } = await apiFetch(
-        `/api/user/appointments/${encodeURIComponent(selected.appointmentNumber)}`,
+        `/api/resident/appointments/${encodeURIComponent(selected.appointmentNumber)}`,
         {
           method: 'PUT',
           skipAuth: true,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: searchedPhone.trim(),
-            slotDate: resDate,
-            slotStart: resSlotStart,
-            appointmentItemId: selected.id,
-          }),
+          body: fd,
         }
       );
-      if (!res.ok || !body?.success) throw new Error((body as { error?: string })?.error || 'Failed');
-      setShowReschedule(false);
+      if (!res.ok || !body?.success) {
+        throw new Error(getApiErrorMessage({ response: { data: body } }, 'Unable to update appointment'));
+      }
+      setShowEditModal(false);
       setSelected(null);
+      setEditData(null);
       await reloadCurrentSearch();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Reschedule failed');
+      setError(getApiErrorMessage(e, 'Unable to update appointment'));
+      throw e;
     } finally {
-      setResBusy(false);
+      setEditSubmitting(false);
     }
   }
 
@@ -322,8 +364,8 @@ export function MyAppointments({
   function formatDt(apt: Apt) {
     const ds = apt.timeSlot?.startTime ? new Date(apt.timeSlot.startTime) : null;
     return {
-      d: apt.timeSlot?.date ? new Date(apt.timeSlot.date).toLocaleDateString() : ds?.toLocaleDateString() ?? '—',
-      t: ds
+      d: ds && !Number.isNaN(ds.getTime()) ? ds.toLocaleDateString() : '—',
+      t: ds && !Number.isNaN(ds.getTime())
         ? ds.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
         : '—',
     };
@@ -473,7 +515,9 @@ export function MyAppointments({
           {filtered.map((apt) => {
             const { d, t } = formatDt(apt);
             const st = apt.status?.toUpperCase() || '';
-            const canModify = st === 'PENDING';
+            const startIso = appointmentStartIso(apt);
+            const canModify = st === 'PENDING' && canRescheduleOrEdit(startIso);
+            const pendingButSoon = st === 'PENDING' && !canRescheduleOrEdit(startIso);
             return (
               <div key={apt.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <div className="flex justify-between mb-3">
@@ -511,23 +555,20 @@ export function MyAppointments({
                     )}
                     Resend confirmation email
                   </button>
+                  {pendingButSoon ? (
+                    <p className="w-full text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      Edits and rescheduling are only allowed more than 24 hours before your appointment
+                      start time.
+                    </p>
+                  ) : null}
                   {canModify ? (
                     <>
-                      {(apt.formResponses?.length ?? 0) > 0 || apt.serviceId ? (
-                        <button
-                          type="button"
-                          onClick={() => void openEditForm(apt)}
-                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-50 text-gray-700 rounded-lg text-sm"
-                        >
-                          <FileEdit className="w-4 h-4" /> Edit form
-                        </button>
-                      ) : null}
                       <button
                         type="button"
-                        onClick={() => openReschedule(apt)}
+                        onClick={() => void openEditAppointment(apt)}
                         className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm"
                       >
-                        <Edit className="w-4 h-4" /> Reschedule
+                        <Edit className="w-4 h-4" /> Edit appointment
                       </button>
                       <button
                         type="button"
@@ -594,75 +635,76 @@ export function MyAppointments({
         />
       ) : null}
 
-      {showEditForm && selected ? (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-lg w-full p-6 space-y-3 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between">
-              <h3 className="text-xl text-gray-800">Edit form answers</h3>
-              <button type="button" onClick={() => setShowEditForm(false)}>
-                <X className="w-6 h-6 text-gray-400" />
+      {showEditModal && selected ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-gray-50 p-4 shadow-lg">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl text-gray-800">Edit appointment</h3>
+                {editData ? (
+                  <p className="text-sm text-gray-500">
+                    {editData.service.name} · {editData.appointment.appointmentNumber}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditData(null);
+                }}
+              >
+                <X className="h-6 w-6 text-gray-400" />
               </button>
             </div>
-            {editLoading ? (
-              <Loader2 className="w-6 h-6 animate-spin" />
+            {editLoading || !editData ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
             ) : (
-              <EditResponsesForm
-                fields={editFields}
-                existing={selected.formResponses}
-                onSubmit={submitEditForm}
-                submitting={editSubmitting}
+              <BookingFormInner
+                key={`edit-${editData.appointment.id}`}
+                serviceId={editData.appointment.serviceId}
+                serviceName={editData.service.name}
+                fields={editData.formFields}
+                slots={resSlots}
+                slotsLoading={resBusy}
+                fldLoad={false}
+                emptySlotsMessage={emptyEditSlotsMessage}
+                onCancel={() => {
+                  setShowEditModal(false);
+                  setEditData(null);
+                }}
+                onSubmitBooking={submitEditAppointment}
+                onDateChange={(d) => {
+                  setResDate(d);
+                  void reloadEditSlots(
+                    editData.appointment.serviceId,
+                    d,
+                    editData.appointment.id
+                  );
+                }}
+                initialPersonal={{
+                  fullName: editData.resident.fullName,
+                  phone: editData.resident.phone,
+                  email: editData.resident.email?.trim() || 'resident@placeholder.local',
+                  gender: (editData.resident.gender || 'MALE') as 'MALE' | 'FEMALE' | 'OTHER',
+                  serviceId: editData.appointment.serviceId,
+                  dateStr: resDate || editData.selectedDate,
+                  slotStart:
+                    editData.selectedSlot.startTime ||
+                    slotStartHHmmFromInstant(appointmentStartIso(selected)),
+                }}
+                editConfig={{
+                  phone: searchedPhone?.trim() || '',
+                  appointmentItemId: editData.appointment.id,
+                  documentUrl: editData.appointment.documentUrl,
+                  existingResponses: editData.existingValues,
+                  onSubmitEdit: submitEditAppointment,
+                  submitLabel: 'Save changes',
+                }}
               />
             )}
-          </div>
-        </div>
-      ) : null}
-
-      {showReschedule && selected ? (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-3">
-            <div className="flex justify-between">
-              <h3 className="text-xl text-gray-800">Reschedule</h3>
-              <button type="button" onClick={() => setShowReschedule(false)}>
-                <X className="w-6 h-6 text-gray-400" />
-              </button>
-            </div>
-            <label className="block text-sm">Date</label>
-            <input
-              type="date"
-              value={resDate}
-              onChange={(e) => {
-                const v = e.target.value;
-                setResDate(v);
-                if (selected?.serviceId != null) {
-                  void reloadSlots(selected.serviceId, v);
-                }
-              }}
-              className="w-full border rounded-lg px-3 py-2"
-            />
-            <label className="block text-sm">New slot</label>
-            {resBusy ? (
-              <Loader2 className="w-6 h-6 animate-spin" />
-            ) : (
-              <select
-                value={resSlotStart}
-                onChange={(e) => setResSlotStart(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2"
-              >
-                <option value="">Select</option>
-                {resSlots.map((s) => {
-                  const start = s.startTime ?? s.start ?? '';
-                  const end = s.endTime ?? s.end ?? '';
-                  return (
-                    <option key={start} value={start}>
-                      {start} – {end}
-                    </option>
-                  );
-                })}
-              </select>
-            )}
-            <button type="button" className="w-full py-2 bg-blue-500 text-white rounded-lg" onClick={applyReschedule}>
-              Confirm reschedule
-            </button>
           </div>
         </div>
       ) : null}

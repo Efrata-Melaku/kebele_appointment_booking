@@ -21,7 +21,7 @@ const {
   assertPhoneMatchesResident,
   normalizeEthiopianPhone,
 } = require('../utils/ethiopianPhone');
-const { resolveDateFilterRange } = require('../utils/dateRange');
+const { resolveDateFilterRange, slotDateFromSlotStartTime } = require('../utils/dateRange');
 const { parsePagination, buildPaginationMeta } = require('../utils/pagination');
 
 const BOOKING_TRANSACTION_OPTIONS = {
@@ -113,23 +113,10 @@ function withPublicNumber(apt) {
   };
 }
 
-function startOfDayUtc(d) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function assertMoreThanOneDayBeforeSlot(slotDate) {
-  const slotDay = startOfDayUtc(slotDate);
-  const today = startOfDayUtc(new Date());
-  const diffMs = slotDay.getTime() - today.getTime();
-  const diffDays = diffMs / 86400000;
-  if (diffDays <= 1) {
-    throw new Error(
-      'This change is only allowed when more than one full day remains before the appointment date.'
-    );
-  }
-}
+const {
+  assertMoreThan24HoursBeforeAppointment,
+  appointmentStartAt,
+} = require('../utils/rescheduleEligibility');
 
 function parseBookingSlot(appointmentData) {
   const { serviceId, slotDate, slotStart, timeSlotId } = appointmentData;
@@ -292,8 +279,8 @@ function mapAdminListRow(apt) {
 }
 
 class AppointmentService {
-  async getAvailableSlots(serviceId, date) {
-    return slotAvailability.getAvailableSlotsForResidents(serviceId, date);
+  async getAvailableSlots(serviceId, date, options = {}) {
+    return slotAvailability.getAvailableSlotsForResidents(serviceId, date, options);
   }
 
   async createAppointment(
@@ -321,7 +308,7 @@ class AppointmentService {
         return await runTransaction(async (tx) => {
           await slotAvailability.assertSlotHasCapacity(tx, {
             serviceId: resolved.service.id,
-            slotDate: resolved.dayStart,
+            slotDate: slotDateFromSlotStartTime(resolved.slotStartTime),
             slotStartTime: resolved.slotStartTime,
             staffCount: resolved.staffCount,
           });
@@ -358,7 +345,7 @@ class AppointmentService {
             {
               groupId: group.id,
               serviceId: resolved.service.id,
-              slotDate: resolved.dayStart,
+              slotDate: slotDateFromSlotStartTime(resolved.slotStartTime),
               slotStartTime: resolved.slotStartTime,
               slotEndTime: resolved.slotEndTime,
               ...(documentUrl != null && documentUrl !== ''
@@ -396,6 +383,158 @@ class AppointmentService {
     throw new Error('Unable to generate a unique appointment number, please try again');
   }
 
+  async _applySlotChange(tx, appointment, appointmentId, slotDate, slotStart) {
+    const resolved = await slotAvailability.resolveBookableSlot(
+      appointment.serviceId,
+      slotDate,
+      slotStart
+    );
+
+    const sameSlot =
+      appointment.slotStartTime.getTime() === resolved.slotStartTime.getTime();
+    if (sameSlot) return false;
+
+    const newSlotDate = slotDateFromSlotStartTime(resolved.slotStartTime);
+    if (!newSlotDate) {
+      const err = new Error('Invalid slot date');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await slotAvailability.assertSlotHasCapacity(tx, {
+      serviceId: appointment.serviceId,
+      slotDate: newSlotDate,
+      slotStartTime: resolved.slotStartTime,
+      staffCount: resolved.staffCount,
+      excludeAppointmentId: appointmentId,
+    });
+
+    await appointmentModel.updateAppointment(
+      appointmentId,
+      {
+        slotDate: newSlotDate,
+        slotStartTime: resolved.slotStartTime,
+        slotEndTime: resolved.slotEndTime,
+        status: APPOINTMENT_STATUS.PENDING,
+      },
+      {},
+      tx
+    );
+    return true;
+  }
+
+  async updateResidentAppointment(
+    appointmentId,
+    { phone, slotDate, slotStart, formResponseRows, fileMetaByFieldId = {}, documentUrl }
+  ) {
+    const normalizedPhone = requireNormalizedPhone(phone);
+
+    return runTransaction(async (tx) => {
+      const appointment = await appointmentModel.findAppointmentById(appointmentId, {
+        include: {
+          group: { include: { resident: true } },
+        },
+      }, tx);
+
+      if (!appointment) {
+        throw new Error('Appointment not found');
+      }
+
+      assertPhoneMatchesResident(appointment.group.resident.phone, normalizedPhone);
+
+      if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
+        throw new Error('Cannot edit a cancelled appointment');
+      }
+
+      if (appointment.status === APPOINTMENT_STATUS.COMPLETED) {
+        throw new Error('Cannot edit a completed appointment');
+      }
+
+      assertMoreThan24HoursBeforeAppointment(attachTimeSlot(appointment));
+
+      if (slotDate && slotStart) {
+        await this._applySlotChange(tx, appointment, appointmentId, slotDate, slotStart);
+      } else if (slotDate || slotStart) {
+        const err = new Error('Both slotDate and slotStart are required to change the time slot');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      if (documentUrl) {
+        await appointmentModel.updateAppointment(
+          appointmentId,
+          { documentUrl },
+          {},
+          tx
+        );
+      }
+
+      const aptRow = await appointmentModel.findAppointmentById(appointmentId, {
+        select: { serviceId: true, group: { select: { residentId: true } } },
+      }, tx);
+
+      if (formResponseRows?.length && aptRow) {
+        await formSubmissionService.upsertSubmissionValues(
+          tx,
+          appointmentId,
+          aptRow.serviceId,
+          aptRow.group.residentId,
+          formResponseRows,
+          fileMetaByFieldId
+        );
+      }
+
+      const updated = await appointmentModel.findAppointmentById(appointmentId, {
+        select: appointmentCreateSelect,
+      }, tx);
+
+      const withResponses = await formSubmissionService.attachSubmissionToAppointment(updated);
+      return withPublicNumber(attachTimeSlot(withResponses));
+    }, BOOKING_TRANSACTION_OPTIONS);
+  }
+
+  async updateResidentAppointmentByRef(
+    appointmentRef,
+    { phone, appointmentItemId, slotDate, slotStart, formResponseRows, fileMetaByFieldId, documentUrl }
+  ) {
+    if (isAppointmentNumberRef(appointmentRef)) {
+      const group = await appointmentGroupModel.findGroupByAppointmentNumber(appointmentRef.trim(), {
+        include: {
+          appointments: {
+            where: { status: APPOINTMENT_STATUS.PENDING },
+          },
+        },
+      });
+      if (!group) throw new Error('Appointment not found');
+      let line = group.appointments[0];
+      if (appointmentItemId != null) {
+        line = group.appointments.find((a) => a.id === Number(appointmentItemId));
+      }
+      if (!line) throw new Error('No editable appointment line found');
+      return this.updateResidentAppointment(line.id, {
+        phone,
+        slotDate,
+        slotStart,
+        formResponseRows,
+        fileMetaByFieldId,
+        documentUrl,
+      });
+    }
+
+    const id = parseInt(appointmentRef, 10);
+    if (!Number.isNaN(id)) {
+      return this.updateResidentAppointment(id, {
+        phone,
+        slotDate,
+        slotStart,
+        formResponseRows,
+        fileMetaByFieldId,
+        documentUrl,
+      });
+    }
+    throw new Error('Invalid appointment reference');
+  }
+
   async rescheduleAppointment(appointmentId, { phone, slotDate, slotStart, timeSlotId }) {
     if (timeSlotId != null) {
       throw new Error('timeSlotId is no longer supported; use slotDate and slotStart');
@@ -424,46 +563,9 @@ class AppointmentService {
         throw new Error('Cannot reschedule a completed appointment');
       }
 
-      assertMoreThanOneDayBeforeSlot(appointment.slotDate);
+      assertMoreThan24HoursBeforeAppointment(attachTimeSlot(appointment));
 
-      const resolved = await slotAvailability.resolveBookableSlot(
-        appointment.serviceId,
-        slotDate,
-        slotStart
-      );
-
-      const sameSlot =
-        appointment.slotDate.getTime() === resolved.dayStart.getTime() &&
-        appointment.slotStartTime.getTime() === resolved.slotStartTime.getTime();
-
-      if (sameSlot) {
-        return withPublicNumber(
-          attachTimeSlot(
-            await appointmentModel.findAppointmentById(appointmentId, {
-              include: appointmentInclude,
-            }, tx)
-          )
-        );
-      }
-
-      await slotAvailability.assertSlotHasCapacity(tx, {
-        serviceId: appointment.serviceId,
-        slotDate: resolved.dayStart,
-        slotStartTime: resolved.slotStartTime,
-        staffCount: resolved.staffCount,
-      });
-
-      await appointmentModel.updateAppointment(
-        appointmentId,
-        {
-          slotDate: resolved.dayStart,
-          slotStartTime: resolved.slotStartTime,
-          slotEndTime: resolved.slotEndTime,
-          status: APPOINTMENT_STATUS.PENDING,
-        },
-        {},
-        tx
-      );
+      await this._applySlotChange(tx, appointment, appointmentId, slotDate, slotStart);
 
       return withPublicNumber(
         attachTimeSlot(
@@ -705,14 +807,14 @@ class AppointmentService {
           slotStart
         );
 
+        const newSlotDate = slotDateFromSlotStartTime(resolved.slotStartTime);
         const sameSlot =
-          existing.slotDate.getTime() === resolved.dayStart.getTime() &&
           existing.slotStartTime.getTime() === resolved.slotStartTime.getTime();
 
         if (!sameSlot) {
           await slotAvailability.assertSlotHasCapacity(tx, {
             serviceId: existing.serviceId,
-            slotDate: resolved.dayStart,
+            slotDate: newSlotDate,
             slotStartTime: resolved.slotStartTime,
             staffCount: resolved.staffCount,
             excludeAppointmentId: appointmentId,
@@ -722,7 +824,7 @@ class AppointmentService {
         await appointmentModel.updateAppointment(
           appointmentId,
           {
-            slotDate: resolved.dayStart,
+            slotDate: newSlotDate,
             slotStartTime: resolved.slotStartTime,
             slotEndTime: resolved.slotEndTime,
             status: APPOINTMENT_STATUS.RESCHEDULED,
@@ -926,87 +1028,128 @@ class AppointmentService {
     throw new Error('Invalid appointment reference');
   }
 
+  /**
+   * Load appointment + form definitions + saved values for resident edit UI.
+   */
+  async getAppointmentForEdit(appointmentNumber, phone, appointmentItemId) {
+    const normalizedPhone = requireNormalizedPhone(phone);
+    const ref = String(appointmentNumber).trim();
+
+    if (!isAppointmentNumberRef(ref)) {
+      const err = new Error('Invalid appointment reference');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const group = await this.getAppointmentGroupBundleByNumber(ref);
+    if (!group) {
+      throw new Error('Appointment not found');
+    }
+
+    assertPhoneMatchesResident(group.resident.phone, normalizedPhone);
+
+    let appointment = group.appointments.find(
+      (a) => a.status === APPOINTMENT_STATUS.PENDING
+    );
+    if (appointmentItemId != null) {
+      appointment = group.appointments.find((a) => a.id === Number(appointmentItemId));
+    }
+    if (!appointment) {
+      throw new Error('Appointment not found');
+    }
+
+    if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
+      const err = new Error('Cannot edit a cancelled appointment');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (appointment.status === APPOINTMENT_STATUS.COMPLETED) {
+      const err = new Error('Cannot edit a completed appointment');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const withSlot = attachTimeSlot({ ...appointment, group });
+    assertMoreThan24HoursBeforeAppointment(withSlot);
+
+    const withResponses = await formSubmissionService.attachSubmissionToAppointment(withSlot);
+    const { formatTime } = require('../utils/time.utils');
+    const { formatDateOnlyYmd, calendarYmdFromLocalInstant } = require('../utils/dateRange');
+
+    const selectedDate =
+      formatDateOnlyYmd(withResponses.slotDate) ||
+      (withResponses.slotStartTime
+        ? calendarYmdFromLocalInstant(withResponses.slotStartTime)
+        : null);
+
+    const slotStart =
+      withResponses.slotStartTime != null
+        ? formatTime(new Date(withResponses.slotStartTime))
+        : null;
+    const slotEnd =
+      withResponses.slotEndTime != null
+        ? formatTime(new Date(withResponses.slotEndTime))
+        : null;
+
+    const formFields = await dynamicFormService.getFormFieldsForService(appointment.serviceId);
+
+    return {
+      appointment: {
+        id: withResponses.id,
+        appointmentNumber: group.appointmentNumber,
+        status: withResponses.status,
+        serviceId: withResponses.serviceId,
+        documentUrl: withResponses.documentUrl ?? null,
+        slotDate: withResponses.slotDate,
+        slotStartTime: withResponses.slotStartTime,
+        slotEndTime: withResponses.slotEndTime,
+        timeSlot: withResponses.timeSlot,
+      },
+      resident: group.resident,
+      service: appointment.service,
+      selectedSlot: {
+        date: selectedDate,
+        startTime: slotStart,
+        endTime: slotEnd,
+      },
+      selectedDate,
+      formFields,
+      existingValues: withResponses.formResponses || [],
+    };
+  }
+
   async updateAppointmentFormResponses(
     appointmentId,
     { phone },
     formResponseRows,
-    fileMetaByFieldId = {}
+    fileMetaByFieldId = {},
+    options = {}
   ) {
-    const normalizedPhone = requireNormalizedPhone(phone);
-
-    return runTransaction(async (tx) => {
-      const appointment = await appointmentModel.findAppointmentById(appointmentId, {
-        include: {
-          group: { include: { resident: true } },
-        },
-      }, tx);
-
-      if (!appointment) {
-        throw new Error('Appointment not found');
-      }
-
-      assertPhoneMatchesResident(appointment.group.resident.phone, normalizedPhone);
-
-      if (appointment.status === APPOINTMENT_STATUS.CANCELLED) {
-        throw new Error('Cannot edit a cancelled appointment');
-      }
-
-      if (appointment.status === APPOINTMENT_STATUS.COMPLETED) {
-        throw new Error('Cannot edit a completed appointment');
-      }
-
-      const aptRow = await appointmentModel.findAppointmentById(appointmentId, {
-        select: { serviceId: true, group: { select: { residentId: true } } },
-      }, tx);
-
-      if (formResponseRows?.length && aptRow) {
-        await formSubmissionService.upsertSubmissionValues(
-          tx,
-          appointmentId,
-          aptRow.serviceId,
-          aptRow.group.residentId,
-          formResponseRows,
-          fileMetaByFieldId
-        );
-      }
-
-      const updated = await appointmentModel.findAppointmentById(appointmentId, {
-        select: appointmentCreateSelect,
-      }, tx);
-
-      const withResponses = await formSubmissionService.attachSubmissionToAppointment(updated);
-      return withPublicNumber(withResponses);
-    }, BOOKING_TRANSACTION_OPTIONS);
+    return this.updateResidentAppointment(appointmentId, {
+      phone,
+      slotDate: options.slotDate,
+      slotStart: options.slotStart,
+      formResponseRows,
+      fileMetaByFieldId,
+      documentUrl: options.documentUrl,
+    });
   }
 
   async updateFormResponsesByRef(
     appointmentRef,
-    { phone, appointmentItemId },
+    payload,
     formResponseRows,
     fileMetaByFieldId = {}
   ) {
-    if (isAppointmentNumberRef(appointmentRef)) {
-      const group = await appointmentGroupModel.findGroupByAppointmentNumber(appointmentRef.trim(), {
-        include: {
-          appointments: {
-            where: { status: APPOINTMENT_STATUS.PENDING },
-          },
-        },
-      });
-      if (!group) throw new Error('Appointment not found');
-      let line = group.appointments[0];
-      if (appointmentItemId != null) {
-        line = group.appointments.find((a) => a.id === Number(appointmentItemId));
-      }
-      if (!line) throw new Error('No editable appointment line found');
-      return this.updateAppointmentFormResponses(line.id, { phone }, formResponseRows, fileMetaByFieldId);
-    }
-
-    const id = parseInt(appointmentRef, 10);
-    if (!Number.isNaN(id)) {
-      return this.updateAppointmentFormResponses(id, { phone }, formResponseRows, fileMetaByFieldId);
-    }
-    throw new Error('Invalid appointment reference');
+    return this.updateResidentAppointmentByRef(appointmentRef, {
+      phone: payload.phone,
+      appointmentItemId: payload.appointmentItemId,
+      slotDate: payload.slotDate,
+      slotStart: payload.slotStart,
+      formResponseRows,
+      fileMetaByFieldId,
+      documentUrl: payload.documentUrl,
+    });
   }
 
   async cancelByAppointmentNumber(appointmentNumber, phone, appointmentItemId) {
@@ -1126,17 +1269,18 @@ class AppointmentService {
     }
 
     const earliest = group.appointments
-      .map((a) => a.slotDate)
-      .filter(Boolean)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+      .filter((a) => a.slotDate && a.slotStartTime)
+      .sort((a, b) => appointmentStartAt(a).getTime() - appointmentStartAt(b).getTime())[0];
     if (earliest) {
-      assertMoreThanOneDayBeforeSlot(earliest);
+      assertMoreThan24HoursBeforeAppointment(attachTimeSlot(earliest));
     }
+
+    const bookedSlotDate = slotDateFromSlotStartTime(resolved.slotStartTime);
 
     return runTransaction(async (tx) => {
       await slotAvailability.assertSlotHasCapacity(tx, {
         serviceId: serviceIdNum,
-        slotDate: resolved.dayStart,
+        slotDate: bookedSlotDate,
         slotStartTime: resolved.slotStartTime,
         staffCount: resolved.staffCount,
       });
@@ -1145,7 +1289,7 @@ class AppointmentService {
         {
           groupId: group.id,
           serviceId: serviceIdNum,
-          slotDate: resolved.dayStart,
+          slotDate: bookedSlotDate,
           slotStartTime: resolved.slotStartTime,
           slotEndTime: resolved.slotEndTime,
           ...(documentUrl != null && documentUrl !== ''
