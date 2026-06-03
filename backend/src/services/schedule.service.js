@@ -1,18 +1,20 @@
 const scheduleModel = require('../models/schedule.model');
 const { getOrCreateDefaultTemplate } = require('./overrideChecker.service');
 const { NotFoundError, ValidationError } = require('../utils/AppError');
-const { parseYmd } = require('../utils/dateRange');
+const { toPrismaDateOnly, formatDateOnlyYmd } = require('../utils/dateRange');
 
 function parseDateInput(value) {
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) {
-      throw new ValidationError('Invalid date');
-    }
-    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
-  }
-  const parsed = parseYmd(value);
-  if (!parsed) throw new ValidationError('Invalid date');
-  return parsed;
+  const day = toPrismaDateOnly(value);
+  if (!day) throw new ValidationError('Invalid date');
+  return day;
+}
+
+function serializeOfficeOverride(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    date: formatDateOnlyYmd(row.date) ?? row.date,
+  };
 }
 
 class ScheduleService {
@@ -46,13 +48,14 @@ class ScheduleService {
   }
 
   async listOfficeOverrides() {
-    return scheduleModel.findOfficeOverrides({ orderBy: { date: 'asc' } });
+    const rows = await scheduleModel.findOfficeOverrides({ orderBy: { date: 'asc' } });
+    return rows.map(serializeOfficeOverride);
   }
 
   async upsertOfficeOverride(body) {
     const { date, isClosed, workStart, workEnd, lunchStart, lunchEnd } = body;
     const day = parseDateInput(date);
-    return scheduleModel.upsertOfficeOverride(
+    const row = await scheduleModel.upsertOfficeOverride(
       { date: day },
       {
         date: day,
@@ -70,6 +73,7 @@ class ScheduleService {
         lunchEnd: lunchEnd || null,
       }
     );
+    return serializeOfficeOverride(row);
   }
 
   async deleteOfficeOverride(dateInput) {

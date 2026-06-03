@@ -1,5 +1,6 @@
 const scheduleModel = require('../models/schedule.model');
-const { calendarDateOnly } = require('../utils/generateSlots');
+const { normalizeCalendarDay } = require('../utils/dateRange');
+const { mergeEffectiveSchedule, logScheduleDebug } = require('../utils/scheduleMerge');
 
 async function getOrCreateDefaultTemplate() {
   let t = await scheduleModel.findFirstWorkScheduleTemplate({ orderBy: { id: 'asc' } });
@@ -22,64 +23,99 @@ function weekdayFlag(template, d) {
   return map[d.getDay()];
 }
 
-async function getOfficeOverrideForDate(date) {
-  const day = calendarDateOnly(date);
-  return scheduleModel.findOfficeOverrideByDate(day);
+async function getOfficeOverrideForDate(dateInput) {
+  const day = normalizeCalendarDay(dateInput);
+  if (!day) return null;
+  return scheduleModel.findOfficeOverrideByDate(day.prismaDate);
 }
 
-async function getServiceOverrideForDate(serviceId, date) {
-  const day = calendarDateOnly(date);
-  return scheduleModel.findServiceOverrideByDate(day, serviceId);
+async function getServiceOverrideForDate(serviceId, dateInput) {
+  const day = normalizeCalendarDay(dateInput);
+  if (!day) return null;
+  return scheduleModel.findServiceOverrideByDate(day.prismaDate, serviceId);
 }
 
 /**
  * Resolve effective hours for a service on a calendar day.
- * @returns {{ closed: true } | { closed: false, workStart, workEnd, lunchStart, lunchEnd }}
+ * Priority: ServiceScheduleOverride > OfficeScheduleOverride > WorkScheduleTemplate
+ * @returns {{ closed: true, reason: string } | { closed: false, dayStart, prismaDate, workStart, workEnd, lunchStart, lunchEnd, hasLunch, sources }}
  */
-async function resolveDaySchedule(serviceId, date) {
+async function resolveDaySchedule(serviceId, dateInput) {
+  const normalized = normalizeCalendarDay(dateInput);
+  if (!normalized) {
+    return { closed: true, reason: 'invalid_date' };
+  }
+
+  const { dayStart, prismaDate, ymd } = normalized;
   const template = await getOrCreateDefaultTemplate();
-  const dayStart = calendarDateOnly(date);
 
   if (!weekdayFlag(template, dayStart)) {
     return { closed: true, reason: 'non_working_day' };
   }
 
-  const officeOv = await getOfficeOverrideForDate(dayStart);
+  const officeOv = await scheduleModel.findOfficeOverrideByDate(prismaDate);
   if (officeOv?.isClosed) {
     return { closed: true, reason: 'office_closed' };
   }
 
-  const svcOv = await getServiceOverrideForDate(serviceId, dayStart);
+  const svcOv = await scheduleModel.findServiceOverrideByDate(prismaDate, Number(serviceId));
   if (svcOv?.serviceDisabled) {
     return { closed: true, reason: 'service_disabled' };
   }
 
-  let workStart = template.workStart;
-  let workEnd = template.workEnd;
-  let lunchStart = template.lunchStart;
-  let lunchEnd = template.lunchEnd;
+  const merged = mergeEffectiveSchedule(template, officeOv, svcOv);
 
-  if (officeOv && !officeOv.isClosed) {
-    if (officeOv.workStart) workStart = officeOv.workStart;
-    if (officeOv.workEnd) workEnd = officeOv.workEnd;
-    if (officeOv.lunchStart) lunchStart = officeOv.lunchStart;
-    if (officeOv.lunchEnd) lunchEnd = officeOv.lunchEnd;
-  }
-
-  if (svcOv && !svcOv.serviceDisabled) {
-    if (svcOv.workStart) workStart = svcOv.workStart;
-    if (svcOv.workEnd) workEnd = svcOv.workEnd;
-    if (svcOv.lunchStart) lunchStart = svcOv.lunchStart;
-    if (svcOv.lunchEnd) lunchEnd = svcOv.lunchEnd;
-  }
+  logScheduleDebug({
+    ymd,
+    serviceId: Number(serviceId),
+    template: {
+      workStart: template.workStart,
+      workEnd: template.workEnd,
+      lunchStart: template.lunchStart,
+      lunchEnd: template.lunchEnd,
+    },
+    officeOverride: officeOv
+      ? {
+          isClosed: officeOv.isClosed,
+          workStart: officeOv.workStart,
+          workEnd: officeOv.workEnd,
+          lunchStart: officeOv.lunchStart,
+          lunchEnd: officeOv.lunchEnd,
+        }
+      : null,
+    serviceOverride: svcOv
+      ? {
+          serviceDisabled: svcOv.serviceDisabled,
+          workStart: svcOv.workStart,
+          workEnd: svcOv.workEnd,
+          lunchStart: svcOv.lunchStart,
+          lunchEnd: svcOv.lunchEnd,
+        }
+      : null,
+    effective: {
+      workStart: merged.workStart,
+      workEnd: merged.workEnd,
+      hasLunch: merged.hasLunch,
+      lunchStart: merged.hasLunch ? merged.lunchStart : null,
+      lunchEnd: merged.hasLunch ? merged.lunchEnd : null,
+      workLayer: merged.workLayer,
+      lunchLayer: merged.lunchLayer,
+    },
+  });
 
   return {
     closed: false,
     dayStart,
-    workStart,
-    workEnd,
-    lunchStart,
-    lunchEnd,
+    prismaDate,
+    workStart: merged.workStart,
+    workEnd: merged.workEnd,
+    hasLunch: merged.hasLunch,
+    lunchStart: merged.lunchStart,
+    lunchEnd: merged.lunchEnd,
+    sources: {
+      workLayer: merged.workLayer,
+      lunchLayer: merged.lunchLayer,
+    },
   };
 }
 

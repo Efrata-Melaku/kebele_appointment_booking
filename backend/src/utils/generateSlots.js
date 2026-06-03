@@ -28,12 +28,24 @@ function atLocalDate(baseDate, timeStr) {
 
 /**
  * Split work day around lunch into one or two windows.
+ * When hasLunch is false, only use workStart–workEnd (never extend to template lunch).
  */
-function buildWorkWindows(dayStart, workStart, workEnd, lunchStart, lunchEnd) {
+function buildWorkWindows(dayStart, workStart, workEnd, lunchStart, lunchEnd, options = {}) {
   const ws = atLocalDate(dayStart, workStart);
   const we = atLocalDate(dayStart, workEnd);
+
+  if (ws >= we) return [];
+
+  if (options.hasLunch === false) {
+    return [{ start: ws, end: we }];
+  }
+
   const ls = atLocalDate(dayStart, lunchStart);
   const le = atLocalDate(dayStart, lunchEnd);
+
+  if (ls >= le || ls >= we || le <= ws) {
+    return [{ start: ws, end: we }];
+  }
 
   const windows = [];
   if (ws < ls) {
@@ -42,6 +54,9 @@ function buildWorkWindows(dayStart, workStart, workEnd, lunchStart, lunchEnd) {
   if (le < we) {
     windows.push({ start: le, end: we });
   }
+  if (windows.length === 0) {
+    return [{ start: ws, end: we }];
+  }
   return windows;
 }
 
@@ -49,8 +64,24 @@ function buildWorkWindows(dayStart, workStart, workEnd, lunchStart, lunchEnd) {
  * Generate slot intervals for one day from resolved schedule hours.
  * @returns {{ start: string, end: string, startAt: Date, endAt: Date }[]}
  */
-function generateSlotIntervals({ dayStart, workStart, workEnd, lunchStart, lunchEnd, durationMinutes }) {
-  const windows = buildWorkWindows(dayStart, workStart, workEnd, lunchStart, lunchEnd);
+function filterIntervalsToWorkHours(intervals, dayStart, workStart, workEnd) {
+  const ws = atLocalDate(dayStart, workStart);
+  const we = atLocalDate(dayStart, workEnd);
+  return intervals.filter((slot) => slot.startAt >= ws && slot.endAt <= we);
+}
+
+function generateSlotIntervals({
+  dayStart,
+  workStart,
+  workEnd,
+  lunchStart,
+  lunchEnd,
+  durationMinutes,
+  hasLunch = true,
+}) {
+  const windows = buildWorkWindows(dayStart, workStart, workEnd, lunchStart, lunchEnd, {
+    hasLunch,
+  });
   const out = [];
 
   for (const w of windows) {
@@ -65,7 +96,7 @@ function generateSlotIntervals({ dayStart, workStart, workEnd, lunchStart, lunch
     }
   }
 
-  return out;
+  return filterIntervalsToWorkHours(out, dayStart, workStart, workEnd);
 }
 
 /**
@@ -123,6 +154,7 @@ module.exports = {
   parseDateParam,
   atLocalDate,
   buildWorkWindows,
+  filterIntervalsToWorkHours,
   generateSlotIntervals,
   applyCapacityToSlots,
   toResidentSlotList,

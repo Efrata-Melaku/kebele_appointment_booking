@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { residentRoutes } from '@/lib/routes';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { http } from '@kebele/shared/lib/http';
-import { Button } from '@kebele/shared/components/ui/button';
+import { mapJustBookedFromApi } from '@/lib/bookingConfirmation';
 import { BookingFormInner } from '@kebele/shared/features/kebele/BookingFormInner';
 import type { FormFieldRow } from '@kebele/shared/features/kebele/bookingSchema';
 
 type Dept = { id: number; name: string };
 type Svc = { id: number; name: string; departmentId: number };
 import type { ResidentSlot } from '@kebele/shared/features/kebele/slotDisplay';
+import { residentSlotEmptyMessage } from '@kebele/shared/lib/slotAvailabilityMessage';
 
 type Slot = ResidentSlot;
 
 export function BookAppointment() {
   const nav = useNavigate();
-  const [done, setDone] = useState(false);
-  const [refNo, setRefNo] = useState<string | null>(null);
   const [topErr, setTopErr] = useState('');
   const [depts, setDepts] = useState<Dept[]>([]);
   const [svcs, setSvcs] = useState<Svc[]>([]);
@@ -91,11 +90,7 @@ export function BookAppointment() {
       .catch((e: unknown) => {
         setSlots([]);
         const message = (e as { response?: { data?: { error?: string } } }).response?.data?.error || '';
-        setEmptySlotsMessage(
-          message.includes('Office is closed on this date')
-            ? 'Office is closed on this date.'
-            : 'No available appointments for this date.'
-        );
+        setEmptySlotsMessage(residentSlotEmptyMessage(message));
       })
       .finally(() => setSlotsLoading(false));
   }, [svcId, dateStr]);
@@ -133,28 +128,18 @@ export function BookAppointment() {
         } else setTopErr(b.error || 'Failed');
         return;
       }
-      setRefNo(b.data?.appointmentNumber ?? null);
-      setDone(true);
-      setTimeout(() => nav(residentRoutes.track), 2200);
+      const justBooked = mapJustBookedFromApi(b.data);
+      if (justBooked) {
+        nav(residentRoutes.track, { state: { justBooked } });
+        return;
+      }
+      setTopErr('Booking succeeded but confirmation details were missing.');
     } catch (e: unknown) {
       const ax = e as { response?: { data?: { error?: string; details?: { message: string }[] } } };
       const d = ax.response?.data?.details;
       if (Array.isArray(d)) setTopErr(d.map((x) => x.message).join(' · '));
       else setTopErr(ax.response?.data?.error || 'Booking failed');
     }
-  }
-
-  if (done) {
-    return (
-      <div className="mx-auto max-w-md p-4">
-        <div className="space-y-3 rounded-xl border bg-white p-8 text-center">
-          <CheckCircle className="mx-auto h-12 w-12 text-green-600" />
-          <h2 className="text-xl font-semibold">Booked</h2>
-          {refNo && <p className="text-sm">{refNo}</p>}
-          <Button onClick={() => nav(residentRoutes.track)}>My appointments</Button>
-        </div>
-      </div>
-    );
   }
 
   return (

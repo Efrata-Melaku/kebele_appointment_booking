@@ -11,19 +11,23 @@ const {
   mergePreuploadedFileMeta,
 } = require('../../utils/fileUpload.utils');
 const { attachTimeSlot } = require('../../utils/appointmentSlot');
+const {
+  mapAppointmentMutationError,
+  logAppointmentMutationError,
+} = require('../../utils/appointmentMutationErrors');
+const { isScheduleClientError } = require('../../utils/scheduleErrors');
 
 class AppointmentController {
   async getAvailableSlots(req, res) {
     try {
-      const { serviceId, date } = req.query;
-      const slots = await appointmentService.getAvailableSlots(serviceId, date);
+      const { serviceId, date, excludeAppointmentId } = req.query;
+      const slots = await appointmentService.getAvailableSlots(serviceId, date, {
+        excludeAppointmentId:
+          excludeAppointmentId != null ? Number(excludeAppointmentId) : undefined,
+      });
       successResponse(res, 'Available slots retrieved successfully', slots);
     } catch (error) {
-      if (
-        error.message.includes('not found') ||
-        error.message.includes('Invalid date') ||
-        error.message.includes('Office is closed on this date')
-      ) {
+      if (isScheduleClientError(error.message)) {
         return errorResponse(res, error.message, 400);
       }
       errorResponse(res, 'Failed to retrieve available slots', 500);
@@ -150,6 +154,7 @@ class AppointmentController {
       );
     } catch (error) {
       if (
+        isScheduleClientError(error.message) ||
         error.message.includes('not available') ||
         error.message.includes('fully booked') ||
         error.message.includes('does not belong')
@@ -216,6 +221,16 @@ class AppointmentController {
       const { appointmentRef } = req.params;
       const { phone, slotDate, slotStart, appointmentItemId } = req.body;
 
+      if (process.env.APPOINTMENT_EDIT_DEBUG === '1' || process.env.RESCHEDULE_DEBUG === '1') {
+        console.debug('[reschedule] request', {
+          appointmentRef,
+          phone: phone ? '[set]' : phone,
+          slotDate,
+          slotStart,
+          appointmentItemId,
+        });
+      }
+
       if (isAppointmentNumberRef(appointmentRef)) {
         const appointment = await appointmentService.rescheduleByAppointmentNumber(
           appointmentRef.trim(),
@@ -274,23 +289,16 @@ class AppointmentController {
 
       successResponse(res, 'Appointment rescheduled successfully', appointment);
     } catch (error) {
-      if (error.statusCode === 400) {
-        return errorResponse(res, error.message, 400);
+      logAppointmentMutationError('reschedule', req, error);
+      const mapped = mapAppointmentMutationError(error);
+      if (mapped.details) {
+        return res.status(mapped.status).json({
+          success: false,
+          error: mapped.message,
+          details: mapped.details,
+        });
       }
-      if (error.message.includes('not found')) {
-        return errorResponse(res, error.message, 404);
-      }
-      if (
-        error.message.includes('fully booked') ||
-        error.message.includes('Invalid slot') ||
-        error.message.includes('Verification failed') ||
-        error.message.includes('Cannot reschedule') ||
-        error.message.includes('more than one full day') ||
-        error.message.includes('appointmentItemId')
-      ) {
-        return errorResponse(res, error.message, 400);
-      }
-      errorResponse(res, 'Failed to reschedule appointment', 500);
+      return errorResponse(res, mapped.message, mapped.status);
     }
   }
 
@@ -436,19 +444,9 @@ class AppointmentController {
 
       successResponse(res, 'Service added to booking', appointment, 201);
     } catch (error) {
-      if (error.message.includes('not found')) {
-        return errorResponse(res, error.message, 404);
-      }
-      if (
-        error.message.includes('Verification failed') ||
-        error.message.includes('fully booked') ||
-        error.message.includes('does not belong') ||
-        error.message.includes('already part') ||
-        error.message.includes('more than one full day')
-      ) {
-        return errorResponse(res, error.message, 400);
-      }
-      errorResponse(res, 'Failed to add service', 500);
+      logAppointmentMutationError('add-service', req, error);
+      const mapped = mapAppointmentMutationError(error);
+      return errorResponse(res, mapped.message, mapped.status);
     }
   }
 
@@ -456,6 +454,14 @@ class AppointmentController {
     try {
       const { appointmentRef } = req.params;
       const { phone, appointmentItemId } = req.body;
+
+      if (process.env.APPOINTMENT_EDIT_DEBUG === '1') {
+        console.debug('[form-responses] request', {
+          appointmentRef,
+          phone: phone ? '[set]' : phone,
+          appointmentItemId,
+        });
+      }
 
       let dynamicValues = {};
       try {
@@ -467,10 +473,12 @@ class AppointmentController {
       const files = Array.isArray(req.files) ? req.files : [];
       let fileUrlsByFieldId = {};
       let fileMetaByFieldId = {};
+      let documentUrl = null;
       try {
         const processed = await processMultipartFiles(files);
         fileUrlsByFieldId = processed.fileUrlsByFieldId;
         fileMetaByFieldId = processed.fileMetaByFieldId;
+        documentUrl = processed.documentUrl ?? null;
       } catch (uploadErr) {
         return errorResponse(res, uploadErr.message || 'File upload failed', 400);
       }
@@ -481,7 +489,7 @@ class AppointmentController {
 
       let appointmentId;
       if (isAppointmentNumberRef(appointmentRef)) {
-        const bundle = await appointmentService.getAppointmentByRef(appointmentRef.trim());
+        const bundle = await appointmentService.getAppointmentByRef(appointmentRef.trim(), phone);
         const items = bundle.items || [bundle];
         let line = items[0];
         if (appointmentItemId != null) {
@@ -502,12 +510,24 @@ class AppointmentController {
         existingByFieldId[r.formFieldId] = r.value;
       }
 
-      const formResponseRows = await dynamicFormService.validateUpdateResponseRows(
-        apt.serviceId,
-        dynamicValues,
-        fileUrlsByFieldId,
-        existingByFieldId
-      );
+      if (Object.keys(dynamicValues).length === 0 && existing.length > 0) {
+        for (const r of existing) {
+          dynamicValues[String(r.formFieldId)] = r.value;
+        }
+      }
+
+      const { slotDate, slotStart } = req.body;
+      const hasFormPayload =
+        Object.keys(dynamicValues).length > 0 || Object.keys(fileUrlsByFieldId).length > 0;
+      let formResponseRows = [];
+      if (hasFormPayload) {
+        formResponseRows = await dynamicFormService.validateUpdateResponseRows(
+          apt.serviceId,
+          dynamicValues,
+          fileUrlsByFieldId,
+          existingByFieldId
+        );
+      }
 
       const updated = await appointmentService.updateFormResponsesByRef(
         appointmentRef,
@@ -515,28 +535,28 @@ class AppointmentController {
           phone,
           appointmentItemId:
             appointmentItemId != null ? parseInt(appointmentItemId, 10) : undefined,
+          slotDate: slotDate || undefined,
+          slotStart: slotStart || undefined,
+          documentUrl: documentUrl || undefined,
         },
         formResponseRows,
         fileMetaByFieldId
       );
 
-      successResponse(res, 'Form responses updated successfully', updated);
+      successResponse(res, 'Appointment updated successfully', updated);
     } catch (error) {
-      if (error.code === 'DYNAMIC_FORM_VALIDATION') {
-        return res.status(400).json({
+      logAppointmentMutationError('form-responses', req, error, {
+        appointmentIdResolved: error.appointmentId,
+      });
+      const mapped = mapAppointmentMutationError(error);
+      if (mapped.details) {
+        return res.status(mapped.status).json({
           success: false,
-          error: 'Form validation failed',
-          details: error.details,
+          error: mapped.message,
+          details: mapped.details,
         });
       }
-      if (
-        error.message.includes('not found') ||
-        error.message.includes('Verification failed') ||
-        error.message.includes('Cannot edit')
-      ) {
-        return errorResponse(res, error.message, 400);
-      }
-      errorResponse(res, 'Failed to update form responses', 500);
+      return errorResponse(res, mapped.message, mapped.status);
     }
   }
 }

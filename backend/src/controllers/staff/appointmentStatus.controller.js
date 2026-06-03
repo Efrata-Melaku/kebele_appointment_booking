@@ -1,6 +1,7 @@
 const appointmentService = require('../../services/appointment.service');
 const slotAvailability = require('../../services/slotAvailability.service');
 const { paginatedSuccess, errorResponse, successResponse } = require('../../utils/response');
+const { isScheduleClientError } = require('../../utils/scheduleErrors');
 
 function mapServiceError(res, error, fallbackMessage) {
   if (error.code === 'NOT_FOUND' || error.message?.includes('not found')) {
@@ -13,6 +14,7 @@ function mapServiceError(res, error, fallbackMessage) {
     return errorResponse(res, error.message, 400);
   }
   if (
+    isScheduleClientError(error.message) ||
     error.message?.includes('fully booked') ||
     error.message?.includes('Invalid time slot') ||
     error.message?.includes('required when status')
@@ -29,7 +31,7 @@ class AppointmentStatusController {
       const slots = await slotAvailability.getAvailableSlotsForAdmin(serviceId, date);
       successResponse(res, 'Available slots retrieved successfully', slots);
     } catch (error) {
-      if (error.message?.includes('not found') || error.message?.includes('Invalid date')) {
+      if (isScheduleClientError(error.message)) {
         return errorResponse(res, error.message, 400);
       }
       console.error('[staff getAvailableSlots]', error);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useForm, Controller, type Path } from 'react-hook-form';
 
@@ -47,6 +47,9 @@ import {
 import { appendResponsesToFormData } from './formSubmit';
 
 import type { ResponsesMap } from './formPaths';
+import { buildResponsesDefaultsFromExisting } from './dynamicFormSchema';
+import type { FormResponseRow } from './formTypes';
+import { browserViewUrl, resolveUploadUrl } from '@kebele/shared/lib/api';
 
 import { cn } from '@kebele/shared/components/ui/utils';
 import {
@@ -94,6 +97,18 @@ type Props = {
 
     dateStr: string;
 
+    slotStart?: string;
+
+  };
+
+  /** When set, form runs in edit mode (read-only personal fields, save changes). */
+  editConfig?: {
+    phone: string;
+    appointmentItemId: number;
+    documentUrl?: string | null;
+    existingResponses?: FormResponseRow[];
+    onSubmitEdit: (fd: FormData) => Promise<void>;
+    submitLabel?: string;
   };
 
 };
@@ -123,11 +138,19 @@ export function BookingFormInner({
 
   initialPersonal,
 
+  editConfig,
+
 }: Props) {
 
   const schema = useMemo(() => buildBookingZodSchema(fields), [fields]);
 
-
+  const responseDefaults = useMemo(
+    () =>
+      editConfig?.existingResponses?.length
+        ? buildResponsesDefaultsFromExisting(fields, editConfig.existingResponses)
+        : undefined,
+    [fields, editConfig?.existingResponses]
+  );
 
   const defaultValues = useMemo(
 
@@ -147,9 +170,13 @@ export function BookingFormInner({
 
         dateStr: initialPersonal.dateStr,
 
+        slotStart: initialPersonal.slotStart,
+
+        responses: responseDefaults,
+
       }),
 
-    [fields, initialPersonal]
+    [fields, initialPersonal, responseDefaults]
 
   );
 
@@ -189,6 +216,8 @@ export function BookingFormInner({
 
       emptySlotsMessage={emptySlotsMessage}
 
+      editConfig={editConfig}
+
     />
 
   );
@@ -223,6 +252,8 @@ function BookingFormFields({
 
   emptySlotsMessage,
 
+  editConfig,
+
 }: Props & {
 
   schema: z.ZodType<BookingFormValues>;
@@ -230,6 +261,9 @@ function BookingFormFields({
   defaultValues: BookingFormValues;
 
 }) {
+
+  const [replacementDocument, setReplacementDocument] = useState<File | null>(null);
+  const isEdit = Boolean(editConfig);
 
   const form = useForm<BookingFormValues>({
 
@@ -270,6 +304,37 @@ function BookingFormFields({
   async function onValid(v: BookingFormValues) {
 
     const fd = new FormData();
+
+    if (isEdit && editConfig) {
+      fd.append('phone', editConfig.phone);
+      fd.append('appointmentItemId', String(editConfig.appointmentItemId));
+      fd.append('slotDate', v.dateStr);
+      fd.append('slotStart', v.slotStart);
+      appendResponsesToFormData(fd, fields, (v.responses ?? {}) as ResponsesMap);
+      if (replacementDocument) {
+        fd.append('document', replacementDocument);
+      }
+      try {
+        await editConfig.onSubmitEdit(fd);
+      } catch (e) {
+        const err = e as Error & {
+          details?: { fieldId: number; message: string }[];
+          response?: { data?: { details?: { fieldId: number; message: string }[] } };
+        };
+        const details = err.details ?? err.response?.data?.details;
+        if (Array.isArray(details) && details.length) {
+          for (const d of details) {
+            setError(`responses.${d.fieldId}` as Path<BookingFormValues>, {
+              type: 'server',
+              message: d.message,
+            });
+          }
+          return;
+        }
+        throw e;
+      }
+      return;
+    }
 
     fd.append('fullName', v.fullName.trim());
 
@@ -344,6 +409,7 @@ function BookingFormFields({
             className="mt-1"
             autoComplete="name"
             aria-invalid={!!errors.fullName}
+            disabled={isEdit || isSubmitting}
             {...register('fullName')}
           />
 
@@ -365,6 +431,7 @@ function BookingFormFields({
             placeholder="09XXXXXXXX"
             autoComplete="tel"
             aria-invalid={!!errors.phone}
+            disabled={isEdit || isSubmitting}
             {...register('phone')}
           />
 
@@ -386,6 +453,7 @@ function BookingFormFields({
             placeholder="you@example.com"
             autoComplete="email"
             aria-invalid={!!errors.email}
+            disabled={isEdit || isSubmitting}
             {...register('email')}
           />
 
@@ -409,7 +477,11 @@ function BookingFormFields({
 
               <Label>Gender</Label>
 
-              <Select value={field.value} onValueChange={field.onChange}>
+              <Select
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={isEdit || isSubmitting}
+              >
 
                 <SelectTrigger className="mt-1">
 
@@ -437,7 +509,43 @@ function BookingFormFields({
 
       </section>
 
-
+      {isEdit ? (
+        <section className="space-y-2 border-t pt-4">
+          <h3 className="font-medium text-gray-900">Supporting document</h3>
+          {editConfig?.documentUrl ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-gray-600">Current file:</span>
+              <a
+                href={browserViewUrl(editConfig.documentUrl)}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 underline"
+              >
+                View file
+              </a>
+              <a
+                href={resolveUploadUrl(editConfig.documentUrl)}
+                download
+                className="text-blue-600 underline"
+              >
+                Download file
+              </a>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No document on file.</p>
+          )}
+          <div>
+            <Label className="text-sm">Replace document (optional)</Label>
+            <Input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="mt-1"
+              disabled={isSubmitting}
+              onChange={(e) => setReplacementDocument(e.target.files?.[0] ?? null)}
+            />
+          </div>
+        </section>
+      ) : null}
 
       {fldLoad ? (
 
@@ -505,7 +613,7 @@ function BookingFormFields({
 
                 min={new Date().toISOString().split('T')[0]}
 
-                onChange={(e) => {
+                  onChange={(e) => {
 
                   field.onChange(e.target.value);
 
@@ -642,8 +750,10 @@ function BookingFormFields({
           {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Booking…
+              {isEdit ? 'Saving…' : 'Booking…'}
             </>
+          ) : isEdit ? (
+            editConfig?.submitLabel ?? 'Save changes'
           ) : (
             'Confirm booking'
           )}

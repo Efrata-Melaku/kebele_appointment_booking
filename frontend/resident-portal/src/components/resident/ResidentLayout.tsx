@@ -1,5 +1,5 @@
 import { Link, Outlet, useLocation } from 'react-router';
-import { Calendar, Home, MessageSquare, Search, Pencil, XCircle, Briefcase } from 'lucide-react';
+import { Calendar, Home, MessageSquare, Search, Briefcase } from 'lucide-react';
 import { KebeleLogo } from '@kebele/shared/components/KebeleLogo';
 import { residentRoutes } from '@/lib/routes';
 
@@ -8,8 +8,6 @@ const navLinks = [
   { to: residentRoutes.book, label: 'Book', icon: Calendar },
   { to: residentRoutes.services, label: 'Services', icon: Briefcase },
   { to: residentRoutes.track, label: 'Track', icon: Search },
-  { to: residentRoutes.edit, label: 'Edit', icon: Pencil },
-  { to: residentRoutes.cancel, label: 'Cancel', icon: XCircle },
   { to: residentRoutes.feedback, label: 'Feedback', icon: MessageSquare },
 ];
 

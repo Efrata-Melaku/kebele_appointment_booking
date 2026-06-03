@@ -1,21 +1,32 @@
+const { slotDateFromSlotStartTime } = require('./dateRange');
+
 /**
  * Map stored slot columns to legacy `timeSlot` shape for API consumers.
+ * Display date follows slotStartTime (not raw slotDate) so UI matches the real start instant.
  */
 function attachTimeSlot(appointment) {
   if (!appointment) return appointment;
   const { slotDate, slotStartTime, slotEndTime, ...rest } = appointment;
+  const displayDate =
+    slotStartTime != null ? slotDateFromSlotStartTime(slotStartTime) ?? slotDate : slotDate;
   return {
     ...rest,
     slotDate,
     slotStartTime,
     slotEndTime,
-    timeSlot: slotDate
+    timeSlot: slotStartTime
       ? {
-          date: slotDate,
+          date: displayDate ?? slotDate,
           startTime: slotStartTime,
           endTime: slotEndTime,
         }
-      : undefined,
+      : slotDate
+        ? {
+            date: slotDate,
+            startTime: slotStartTime,
+            endTime: slotEndTime,
+          }
+        : undefined,
   };
 }
 

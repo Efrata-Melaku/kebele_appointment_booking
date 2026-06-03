@@ -1,8 +1,8 @@
 const appointmentModel = require('../models/appointment.model');
 const serviceModel = require('../models/service.model');
 const { APPOINTMENT_STATUS } = require('../config/constants');
+const { normalizeCalendarDay } = require('../utils/dateRange');
 const {
-  parseDateParam,
   generateSlotIntervals,
   applyCapacityToSlots,
   toResidentSlotList,
@@ -11,6 +11,8 @@ const {
   slotStartKey,
 } = require('../utils/generateSlots');
 const { resolveDaySchedule } = require('./overrideChecker.service');
+const { closedReasonMessage, INVALID_SLOT_MESSAGE } = require('../utils/scheduleErrors');
+const { logScheduleDebug } = require('../utils/scheduleMerge');
 
 const ACTIVE_STATUSES = [
   APPOINTMENT_STATUS.PENDING,
@@ -19,15 +21,26 @@ const ACTIVE_STATUSES = [
   APPOINTMENT_STATUS.NOT_SERVED,
 ];
 
-async function countBookingsForDay(serviceId, dayStart) {
+function assertScheduleAllowsBooking(schedule) {
+  if (!schedule.closed) return;
+  throw new Error(closedReasonMessage(schedule.reason));
+}
+
+async function countBookingsForDay(serviceId, prismaDate, excludeAppointmentId) {
   const appointments = await appointmentModel.findAppointmentsByServiceAndDay(
     serviceId,
-    dayStart,
+    prismaDate,
     ACTIVE_STATUSES
   );
 
   const map = new Map();
   for (const a of appointments) {
+    if (
+      excludeAppointmentId != null &&
+      Number(a.id) === Number(excludeAppointmentId)
+    ) {
+      continue;
+    }
     const key = slotStartKey(a.slotStartTime);
     map.set(key, (map.get(key) || 0) + 1);
   }
@@ -37,10 +50,10 @@ async function countBookingsForDay(serviceId, dayStart) {
 /**
  * Internal: all intervals with capacity metadata.
  */
-async function buildSlotsWithCapacity(serviceId, dateInput) {
+async function buildSlotsWithCapacity(serviceId, dateInput, options = {}) {
   const serviceIdNum = Number(serviceId);
-  const dayStart = parseDateParam(dateInput);
-  if (!dayStart) {
+  const normalized = normalizeCalendarDay(dateInput);
+  if (!normalized) {
     throw new Error('Invalid date');
   }
 
@@ -52,13 +65,8 @@ async function buildSlotsWithCapacity(serviceId, dateInput) {
     throw new Error('Service not found');
   }
 
-  const schedule = await resolveDaySchedule(serviceIdNum, dayStart);
-  if (schedule.closed) {
-    if (schedule.reason === 'office_closed') {
-      throw new Error('Office is closed on this date.');
-    }
-    return [];
-  }
+  const schedule = await resolveDaySchedule(serviceIdNum, normalized.ymd);
+  assertScheduleAllowsBooking(schedule);
 
   const intervals = generateSlotIntervals({
     dayStart: schedule.dayStart,
@@ -66,18 +74,33 @@ async function buildSlotsWithCapacity(serviceId, dateInput) {
     workEnd: schedule.workEnd,
     lunchStart: schedule.lunchStart,
     lunchEnd: schedule.lunchEnd,
+    hasLunch: schedule.hasLunch,
     durationMinutes: service.durationInMinutes,
   });
 
-  const bookedByStart = await countBookingsForDay(serviceIdNum, dayStart);
+  logScheduleDebug({
+    phase: 'slot-generation',
+    serviceId: serviceIdNum,
+    date: normalized.ymd,
+    durationMinutes: service.durationInMinutes,
+    sources: schedule.sources,
+    slotCount: intervals.length,
+    slots: intervals.map((s) => ({ start: s.start, end: s.end })),
+  });
+
+  const bookedByStart = await countBookingsForDay(
+    serviceIdNum,
+    schedule.prismaDate,
+    options.excludeAppointmentId
+  );
   return applyCapacityToSlots(intervals, bookedByStart, service.staffCount);
 }
 
 /**
  * Resident booking: only available slots, no capacity/staff fields.
  */
-async function getAvailableSlotsForResidents(serviceId, dateInput) {
-  const withCapacity = await buildSlotsWithCapacity(serviceId, dateInput);
+async function getAvailableSlotsForResidents(serviceId, dateInput, options = {}) {
+  const withCapacity = await buildSlotsWithCapacity(serviceId, dateInput, options);
   return toResidentSlotList(withCapacity);
 }
 
@@ -99,12 +122,12 @@ async function getAvailableSlotsForServiceDate(serviceId, dateInput, options = {
 }
 
 /**
- * Resolve slot window and validate it exists in the generated schedule.
+ * Resolve slot window and validate it exists in the generated schedule (booking guard).
  */
 async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
   const serviceIdNum = Number(serviceId);
-  const dayStart = parseDateParam(dateInput);
-  if (!dayStart) {
+  const normalized = normalizeCalendarDay(dateInput);
+  if (!normalized) {
     throw new Error('Invalid date');
   }
 
@@ -116,10 +139,8 @@ async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
     throw new Error('Service not found');
   }
 
-  const schedule = await resolveDaySchedule(serviceIdNum, dayStart);
-  if (schedule.closed) {
-    throw new Error('No appointments available on this date');
-  }
+  const schedule = await resolveDaySchedule(serviceIdNum, normalized.ymd);
+  assertScheduleAllowsBooking(schedule);
 
   const intervals = generateSlotIntervals({
     dayStart: schedule.dayStart,
@@ -127,15 +148,16 @@ async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
     workEnd: schedule.workEnd,
     lunchStart: schedule.lunchStart,
     lunchEnd: schedule.lunchEnd,
+    hasLunch: schedule.hasLunch,
     durationMinutes: service.durationInMinutes,
   });
 
   const match = intervals.find((s) => s.start === slotStartHHmm);
   if (!match) {
-    throw new Error('Invalid time slot for this date');
+    throw new Error(INVALID_SLOT_MESSAGE);
   }
 
-  const bookedByStart = await countBookingsForDay(serviceIdNum, dayStart);
+  const bookedByStart = await countBookingsForDay(serviceIdNum, schedule.prismaDate);
   const booked = bookedByStart.get(slotStartHHmm) || 0;
   if (service.staffCount <= 0 || booked >= service.staffCount) {
     throw new Error('Time slot is fully booked');
@@ -143,7 +165,7 @@ async function resolveBookableSlot(serviceId, dateInput, slotStartHHmm) {
 
   return {
     service,
-    dayStart,
+    dayStart: schedule.prismaDate,
     slotStartTime: match.startAt,
     slotEndTime: match.endAt,
     staffCount: service.staffCount,

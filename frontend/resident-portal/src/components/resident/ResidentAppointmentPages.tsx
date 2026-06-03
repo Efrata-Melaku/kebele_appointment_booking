@@ -1,4 +1,7 @@
+import { useLocation, useNavigate } from 'react-router';
 import { MyAppointments } from '../user/MyAppointments';
+import { residentRoutes } from '@/lib/routes';
+import type { TrackLocationState } from '@/lib/bookingConfirmation';
 
 type Props = {
   pageTitle: string;
@@ -19,11 +22,21 @@ function ResidentAppointmentsPage({ pageTitle, pageDescription, highlight, viewM
 }
 
 export function TrackAppointmentPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const justBooked = (location.state as TrackLocationState | null)?.justBooked ?? null;
+
+  function dismissJustBooked() {
+    navigate(residentRoutes.track, { replace: true, state: null });
+  }
+
   return (
-    <ResidentAppointmentsPage
+    <MyAppointments
       pageTitle="Track appointment"
       pageDescription="Enter your phone number or look up by appointment reference."
       highlight="track"
+      justBooked={justBooked}
+      onDismissJustBooked={dismissJustBooked}
     />
   );
 }
