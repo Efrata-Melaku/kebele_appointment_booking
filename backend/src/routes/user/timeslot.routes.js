@@ -1,6 +1,7 @@
 const express = require('express');
 const slotGeneratorService = require('../../services/slotGenerator.service');
 const { successResponse, errorResponse } = require('../../utils/response');
+const { isScheduleClientError } = require('../../utils/scheduleErrors');
 
 const router = express.Router();
 
@@ -14,7 +15,8 @@ router.get('/:serviceId/:date', async (req, res) => {
     const slots = await slotGeneratorService.getAvailableSlots(serviceId, date);
     successResponse(res, 'Available time slots retrieved successfully', slots);
   } catch (error) {
-    errorResponse(res, error.message || 'Failed to retrieve time slots', 400);
+    const status = isScheduleClientError(error.message) ? 400 : 500;
+    errorResponse(res, error.message || 'Failed to retrieve time slots', status);
   }
 });
 

@@ -1,13 +1,5 @@
 import { Link } from 'react-router';
-import {
-  Calendar,
-  Search,
-  Pencil,
-  XCircle,
-  MessageSquare,
-  Briefcase,
-  ArrowRight,
-} from 'lucide-react';
+import { Calendar, Search, MessageSquare, Briefcase, ArrowRight } from 'lucide-react';
 import { KebeleLogo } from '@kebele/shared/components/KebeleLogo';
 import { residentRoutes } from '@/lib/routes';
 
@@ -22,23 +14,9 @@ const actions = [
   {
     to: residentRoutes.track,
     title: 'Track appointment',
-    description: 'Look up status with your phone or reference number',
+    description: 'Look up status, edit, cancel, or leave feedback',
     icon: Search,
     color: 'bg-indigo-500',
-  },
-  {
-    to: residentRoutes.edit,
-    title: 'Edit appointment',
-    description: 'Update form responses or reschedule a pending booking',
-    icon: Pencil,
-    color: 'bg-teal-500',
-  },
-  {
-    to: residentRoutes.cancel,
-    title: 'Cancel appointment',
-    description: 'Cancel a pending appointment',
-    icon: XCircle,
-    color: 'bg-red-500',
   },
   {
     to: residentRoutes.feedback,
@@ -68,8 +46,8 @@ export function ResidentHome() {
         />
         <h1 className="text-3xl md:text-4xl font-semibold mb-3">Welcome to Kebele appointments</h1>
         <p className="text-blue-100 max-w-2xl mb-8">
-          Book, track, edit, or cancel your appointments online. No account required — use the phone
-          number you provide when booking.
+          Book and track your appointments online. No account required — use the phone number you
+          provide when booking.
         </p>
         <Link
           to={residentRoutes.book}

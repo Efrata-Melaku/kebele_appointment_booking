@@ -9,6 +9,8 @@ import {
 import { EditResponsesForm } from '@kebele/shared/features/kebele/EditResponsesForm';
 import { ResidentFeedbackModal } from '@kebele/shared/features/kebele/ResidentFeedbackModal';
 import type { FormResponseRow, ServiceFormFieldDef } from '@kebele/shared/features/kebele/formTypes';
+import type { JustBookedAppointment } from '@/lib/bookingConfirmation';
+import { BookingConfirmationCard } from '../resident/BookingConfirmationCard';
 
 type Apt = {
   id: number;
@@ -27,6 +29,9 @@ type MyAppointmentsProps = {
   pageDescription?: string;
   highlight?: 'track' | 'manage';
   viewMode?: 'default' | 'feedback';
+  /** From router location.state after booking; cleared on refresh or dismiss. */
+  justBooked?: JustBookedAppointment | null;
+  onDismissJustBooked?: () => void;
 };
 
 export function MyAppointments({
@@ -34,6 +39,8 @@ export function MyAppointments({
   pageDescription = 'Enter the phone you used when booking',
   highlight,
   viewMode = 'default',
+  justBooked = null,
+  onDismissJustBooked,
 }: MyAppointmentsProps = {}) {
   const [phone, setPhoneInput] = useState('');
   const [appointmentNumberInput, setAppointmentNumberInput] = useState('');
@@ -329,6 +336,11 @@ export function MyAppointments({
         <p className="text-gray-600 text-sm">{pageDescription}</p>
       </div>
 
+      {justBooked && onDismissJustBooked ? (
+        <BookingConfirmationCard appointment={justBooked} onTrackLater={onDismissJustBooked} />
+      ) : null}
+
+      {!justBooked ? (
       <div
         className={`bg-white rounded-xl p-4 shadow-sm border space-y-3 ${
           highlight === 'track' || viewMode === 'feedback'
@@ -374,22 +386,23 @@ export function MyAppointments({
         {phoneError ? <p className="text-sm text-red-600">{phoneError}</p> : null}
         {searchError ? <p className="text-sm text-red-600">{searchError}</p> : null}
       </div>
+      ) : null}
 
-      {loading ? (
+      {!justBooked && loading ? (
         <div className="flex items-center gap-2 text-gray-500">
           <Loader2 className="w-5 h-5 animate-spin" /> Loading…
         </div>
       ) : null}
-      {resendSuccess ? (
+      {!justBooked && resendSuccess ? (
         <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
           {resendSuccess}
         </div>
       ) : null}
-      {error ? (
+      {!justBooked && error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
       ) : null}
 
-      {!hasSearched ? null : viewMode === 'feedback' ? (
+      {justBooked ? null : !hasSearched ? null : viewMode === 'feedback' ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           {list.length === 0 ? (
             <p className="px-4 py-6 text-sm text-gray-500">

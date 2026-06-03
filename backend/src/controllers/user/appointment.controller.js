@@ -11,6 +11,7 @@ const {
   mergePreuploadedFileMeta,
 } = require('../../utils/fileUpload.utils');
 const { attachTimeSlot } = require('../../utils/appointmentSlot');
+const { isScheduleClientError } = require('../../utils/scheduleErrors');
 
 class AppointmentController {
   async getAvailableSlots(req, res) {
@@ -19,11 +20,7 @@ class AppointmentController {
       const slots = await appointmentService.getAvailableSlots(serviceId, date);
       successResponse(res, 'Available slots retrieved successfully', slots);
     } catch (error) {
-      if (
-        error.message.includes('not found') ||
-        error.message.includes('Invalid date') ||
-        error.message.includes('Office is closed on this date')
-      ) {
+      if (isScheduleClientError(error.message)) {
         return errorResponse(res, error.message, 400);
       }
       errorResponse(res, 'Failed to retrieve available slots', 500);
@@ -150,6 +147,7 @@ class AppointmentController {
       );
     } catch (error) {
       if (
+        isScheduleClientError(error.message) ||
         error.message.includes('not available') ||
         error.message.includes('fully booked') ||
         error.message.includes('does not belong')

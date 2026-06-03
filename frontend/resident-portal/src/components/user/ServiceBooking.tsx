@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { residentRoutes } from '@/lib/routes';
-import { ArrowLeft, CheckCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Clock } from 'lucide-react';
 import { http } from '@kebele/shared/lib/http';
 import { BookingFormInner } from '@kebele/shared/features/kebele/BookingFormInner';
 import type { FormFieldRow } from '@kebele/shared/features/kebele/bookingSchema';
@@ -9,9 +9,10 @@ import { getServiceIcon } from '@kebele/shared/features/kebele/serviceIcons';
 import { setResidentPhone } from '@kebele/shared/lib/auth';
 import { normalizeEthiopianPhone } from '@kebele/shared/lib/ethiopianPhone';
 import { Skeleton } from '@kebele/shared/components/ui/skeleton';
-import { Button } from '@kebele/shared/components/ui/button';
+import { mapJustBookedFromApi } from '@/lib/bookingConfirmation';
 
 import type { ResidentSlot } from '@kebele/shared/features/kebele/slotDisplay';
+import { residentSlotEmptyMessage } from '@kebele/shared/lib/slotAvailabilityMessage';
 
 type ServiceDetail = {
   id: number;
@@ -36,8 +37,6 @@ export function ServiceBooking() {
   const [emptySlotsMessage, setEmptySlotsMessage] = useState('');
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [dateStr, setDateStr] = useState(new Date().toISOString().split('T')[0]);
-  const [done, setDone] = useState(false);
-  const [refNo, setRefNo] = useState<string | null>(null);
   const [topErr, setTopErr] = useState('');
 
   useEffect(() => {
@@ -73,11 +72,7 @@ export function ServiceBooking() {
       .catch((e: unknown) => {
         setSlots([]);
         const message = (e as { response?: { data?: { error?: string } } }).response?.data?.error || '';
-        setEmptySlotsMessage(
-          message.includes('Office is closed on this date')
-            ? 'Office is closed on this date.'
-            : 'No available appointments for this date.'
-        );
+        setEmptySlotsMessage(residentSlotEmptyMessage(message));
       })
       .finally(() => setSlotsLoading(false));
   }, [serviceId, dateStr, service?.bookable]);
@@ -125,9 +120,12 @@ export function ServiceBooking() {
         }
         throw new Error(b.error || 'Failed');
       }
-      setRefNo(b.data?.appointmentNumber ?? null);
-      setDone(true);
-      setTimeout(() => nav(residentRoutes.track), 2200);
+      const justBooked = mapJustBookedFromApi(b.data);
+      if (justBooked) {
+        nav(residentRoutes.track, { state: { justBooked } });
+        return;
+      }
+      throw new Error('Booking succeeded but confirmation details were missing.');
     } catch (e: unknown) {
       const withDetails = e as Error & {
         details?: { fieldId: number; message: string }[];
@@ -143,19 +141,6 @@ export function ServiceBooking() {
           (e instanceof Error ? e.message : 'Booking failed')
       );
     }
-  }
-
-  if (done) {
-    return (
-      <div className="mx-auto max-w-md p-4">
-        <div className="space-y-3 rounded-xl border bg-white p-8 text-center">
-          <CheckCircle className="mx-auto h-12 w-12 text-green-600" />
-          <h2 className="text-xl font-semibold">Appointment booked</h2>
-          {refNo && <p className="text-sm text-gray-600">Reference: {refNo}</p>}
-          <Button onClick={() => nav(residentRoutes.track)}>My appointments</Button>
-        </div>
-      </div>
-    );
   }
 
   const Icon = service ? getServiceIcon(service.name) : Clock;
